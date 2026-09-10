@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from finance_dashboard.models import Portfolio
+from finance_dashboard.models import Holding, Portfolio
 from finance_dashboard.portfolio_repository import PortfolioRepository
 
 
@@ -26,16 +26,37 @@ class PortfolioService:
             raise PermissionError("Portfolio does not belong to this user.")
         return portfolio
 
-    def add_holding(self, portfolio_id: str, ticker: str, quantity: float) -> Portfolio:
+    def add_holding(
+        self,
+        portfolio_id: str,
+        ticker: str,
+        quantity: int,
+        purchase_price: float = 0.0,
+    ) -> Portfolio:
         portfolio = self._owned(portfolio_id)
         normalized = ticker.strip().upper()
-        if not normalized or quantity <= 0:
-            raise ValueError("Ticker and a positive quantity are required.")
-        portfolio.holdings[normalized] = float(quantity)
+        if not normalized or isinstance(quantity, bool) or not isinstance(quantity, int) or quantity <= 0:
+            raise ValueError("Ticker and a positive whole-number quantity are required.")
+        if purchase_price < 0:
+            raise ValueError("Purchase price cannot be negative.")
+        portfolio.holdings[normalized] = Holding(quantity, float(purchase_price))
         return self.repository.save(portfolio)
 
-    def edit_holding(self, portfolio_id: str, ticker: str, quantity: float) -> Portfolio:
-        return self.add_holding(portfolio_id, ticker, quantity)
+    def edit_holding(
+        self,
+        portfolio_id: str,
+        ticker: str,
+        quantity: int,
+        purchase_price: float | None = None,
+    ) -> Portfolio:
+        portfolio = self._owned(portfolio_id)
+        existing = portfolio.holdings.get(ticker.strip().upper())
+        return self.add_holding(
+            portfolio_id,
+            ticker,
+            quantity,
+            existing.purchase_price if purchase_price is None and existing else purchase_price or 0.0,
+        )
 
     def remove_holding(self, portfolio_id: str, ticker: str) -> Portfolio:
         portfolio = self._owned(portfolio_id)

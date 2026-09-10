@@ -71,7 +71,7 @@ flowchart TD
 | **Simple watchlist CSV** | CSV uploads are used as a lightweight ticker watchlist import. The app extracts valid symbols from the file rather than parsing historical price data. |
 | **Repository boundary** | MongoDB Atlas persistence is accessed through repository adapters; in-memory adapters support local development and tests when `MONGODB_URI` is absent. |
 | **Application authentication** | Users authenticate by email and scrypt-hashed password in main-page tabs; the signed-in user is held in Streamlit session state. |
-| **Portfolio navigation** | Portfolio management is a dedicated navigation page; creation uses an explicit green action button rather than a selection option. |
+| **Portfolio navigation** | Portfolio management is a dedicated navigation page; creation uses an explicit green action button rather than a selection option. Holding rows validate tickers, record whole-share quantities and purchase prices, show current profit/loss, and link back to the dashboard ticker view. |
 
 ### Assumptions
 
@@ -105,7 +105,7 @@ Finance Dashboard Srikaran/
 
 ### Added application modules
 
-- `finance_dashboard/models.py` — User and Portfolio document models
+- `finance_dashboard/models.py` — User, Holding, and Portfolio document models
 - `finance_dashboard/portfolio_repository.py` — MongoDB Atlas and in-memory repositories
 - `finance_dashboard/portfolio_service.py` — Portfolio CRUD use cases
 - `finance_dashboard/auth.py` — Signup/login password service
@@ -204,6 +204,8 @@ display_metrics()
 | `last_uploaded_file_id` | `str` | Name of the last uploaded CSV file to detect changes |
 | `current_user` | `User` | Signed-in user for the current Streamlit session |
 
+Portfolio holdings are stored as ticker-keyed records with an integer `quantity` and a `purchase_price`. Legacy numeric holding values are read as quantities with a zero purchase price.
+
 **Cache invalidation:** Re-download when `refresh_data` is clicked, cache is empty, or tickers change (yfinance source only). CSV data persists until refresh or new upload.
 
 ---
@@ -271,6 +273,11 @@ display_metrics()
 | 2026-07-16 | Copilot | Reviewed AGENTS.md against the current controller flow, CSV watchlist behavior, and session-state usage to keep the handoff notes accurate |
 | 2026-09-02 | Copilot | Added MongoDB Atlas repositories, authenticated portfolio CRUD, returns, volatility, clustering, and similarity recommendations |
 | 2026-09-02 | Copilot | Moved authentication to main-page tabs, isolated portfolio management as a navigation page, fixed portfolio creation, and preserved local fallback data across reruns |
+| 2026-09-09 | Copilot | Added whole-share holding records with purchase prices and legacy holding deserialization |
+| 2026-09-09 | Copilot | Added validated portfolio ticker entry, current-price profit/loss display, form reset, and ticker-to-dashboard navigation |
+| 2026-09-09 | Copilot | Reset add-stock widget state before rerendering to prevent stale ticker values |
+| 2026-09-09 | Copilot | Fixed ticker navigation to switch to the dynamic Overview page object instead of the unsupported app.py path |
+| 2026-09-09 | Copilot | Added a historical price line chart to Overview for redirected ticker views |
 
 ---
 

@@ -13,6 +13,7 @@ from finance_dashboard.analysis import PortfolioAnalysis
 from finance_dashboard.auth import AuthService
 from finance_dashboard.metric_registry import MetricDefinition, MetricRegistry
 from finance_dashboard.metrics import Metrics
+from finance_dashboard.models import Holding
 from finance_dashboard.portfolio_repository import InMemoryPortfolioRepository, InMemoryUserRepository, MongoRepositories
 from finance_dashboard.portfolio_service import PortfolioService
 from finance_dashboard.ui import UI
@@ -117,25 +118,90 @@ class DashboardController:
         names = [portfolio.name for portfolio in portfolios]
         selected_name = st.selectbox("Portfolio", names)
         portfolio = portfolios[names.index(selected_name)]
-        for ticker, quantity in portfolio.holdings.items():
-            col1, col2, col3 = st.columns([2, 1, 1])
-            col1.write(ticker)
-            new_quantity = col2.number_input("Quantity", min_value=0.01, value=float(quantity), key=f"quantity_{portfolio.id}_{ticker}")
-            if col3.button("Remove", key=f"remove_{portfolio.id}_{ticker}"):
+        ticker_key = f"add_ticker_{portfolio.id}"
+        quantity_key = f"add_quantity_{portfolio.id}"
+        price_key = f"add_purchase_price_{portfolio.id}"
+        reset_key = f"reset_add_stock_{portfolio.id}"
+        if st.session_state.pop(reset_key, False):
+            st.session_state[ticker_key] = ""
+            st.session_state[quantity_key] = 1
+            st.session_state[price_key] = 1.0
+        for ticker, holding in portfolio.holdings.items():
+            if not isinstance(holding, Holding):
+                holding = Holding(int(holding))
+            try:
+                current_price = self._get_current_price(ticker)
+            except ValueError:
+                current_price = None
+            col1, col2, col3, col4, col5 = st.columns([2, 1, 1.5, 1.5, 1])
+            if col1.button(ticker, key=f"ticker_{portfolio.id}_{ticker}", use_container_width=True):
+                st.session_state["tickers_list"] = [ticker]
+                st.switch_page(self._overview_page)
+            new_quantity = col2.number_input(
+                "Quantity",
+                min_value=1,
+                value=holding.quantity,
+                step=1,
+                format="%d",
+                key=f"quantity_{portfolio.id}_{ticker}",
+            )
+            col3.write(f"Bought: ${holding.purchase_price:,.2f}")
+            if current_price is not None:
+                col3.write(f"Current: ${current_price:,.2f}")
+            col4.metric(
+                "Profit / Loss",
+                self._format_profit_loss(holding, current_price),
+                delta=self._format_profit_loss_delta(holding, current_price),
+            )
+            if col5.button("Remove", key=f"remove_{portfolio.id}_{ticker}"):
                 self.portfolios.remove_holding(portfolio.id, ticker)
                 st.rerun()
-            if new_quantity != quantity:
+            if new_quantity != holding.quantity:
                 self.portfolios.edit_holding(portfolio.id, ticker, new_quantity)
-        ticker = st.text_input("Add stock ticker", key=f"add_ticker_{portfolio.id}")
-        quantity = st.number_input("Shares", min_value=0.01, value=1.0, key=f"add_quantity_{portfolio.id}")
-        if st.button("Add stock"):
+                st.rerun()
+
+        ticker = st.text_input("Add stock ticker", key=ticker_key)
+        quantity = st.number_input("Shares", min_value=1, value=1, step=1, format="%d", key=quantity_key)
+        purchase_price = st.number_input("Purchase price per share", min_value=0.01, value=1.0, step=0.01, key=price_key)
+        if st.button("Add stock", key=f"add_stock_{portfolio.id}"):
             try:
-                self.portfolios.add_holding(portfolio.id, ticker, quantity)
+                self._get_current_price(ticker)
+                self.portfolios.add_holding(portfolio.id, ticker, int(quantity), purchase_price)
+                st.session_state[reset_key] = True
                 st.rerun()
             except ValueError as exc:
                 st.error(str(exc))
         if portfolio.holdings and st.button("Analyze this portfolio"):
             st.session_state["tickers_list"] = list(portfolio.holdings)
+
+    def _get_current_price(self, ticker: str) -> float | None:
+        normalized = ticker.strip().upper()
+        if not normalized:
+            raise ValueError("Enter a stock ticker.")
+        try:
+            prices = self.finance_data.download(
+                [normalized],
+                start=date.today() - timedelta(days=30),
+                end=date.today(),
+            )
+        except ValueError as exc:
+            raise ValueError(f"Ticker '{normalized}' was not found or has no recent price data.") from exc
+        if normalized not in prices.columns or prices[normalized].dropna().empty:
+            raise ValueError(f"Ticker '{normalized}' was not found or has no recent price data.")
+        return float(prices[normalized].dropna().iloc[-1])
+
+    @staticmethod
+    def _format_profit_loss(holding: Holding, current_price: float | None) -> str:
+        if current_price is None or holding.purchase_price <= 0:
+            return "Unavailable"
+        return f"${(current_price - holding.purchase_price) * holding.quantity:,.2f}"
+
+    @staticmethod
+    def _format_profit_loss_delta(holding: Holding, current_price: float | None) -> str | None:
+        if current_price is None or holding.purchase_price <= 0:
+            return None
+        percent = ((current_price / holding.purchase_price) - 1) * 100
+        return f"{percent:+.2f}%"
 
     def _ensure_session_state(self) -> None:
         if SESSION_PRICES not in st.session_state:
@@ -352,6 +418,8 @@ class DashboardController:
         st.write(f"**Data source:** {source} · **Tickers:** {', '.join(prices.columns)}")
 
         self.ui.show_overview_cards(prices, list(prices.columns))
+        st.subheader("Price chart")
+        self.ui.show(prices, "line", title="Historical Prices")
 
         with st.expander("Risk groups and recommendations"):
             method = st.selectbox("Clustering method", ["kmeans", "dbscan"])
@@ -397,14 +465,13 @@ class DashboardController:
         st.session_state[SESSION_USER_INPUT] = user_input
         active_metrics = self.registry.active_metrics(user_input.enabled_optional_metrics)
 
-        pages = [
-            st.Page(
-                self._run_overview_page,
-                title="Overview",
-                icon="📊",
-                default=True,
-            )
-        ]
+        self._overview_page = st.Page(
+            self._run_overview_page,
+            title="Overview",
+            icon="📊",
+            default=True,
+        )
+        pages = [self._overview_page]
         pages.append(
             st.Page(
                 self._run_portfolio_page,

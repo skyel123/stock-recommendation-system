@@ -14,15 +14,31 @@ def test_portfolio_crud_and_holdings() -> None:
     service = PortfolioService(InMemoryPortfolioRepository())
     portfolio = service.create_portfolio("user-1", "Retirement")
 
-    service.add_holding(portfolio.id, "aapl", 10)
-    service.add_holding(portfolio.id, "MSFT", 5)
+    service.add_holding(portfolio.id, "aapl", 10, 100.50)
+    service.add_holding(portfolio.id, "MSFT", 5, 200)
     service.edit_holding(portfolio.id, "AAPL", 12)
     service.remove_holding(portfolio.id, "MSFT")
 
     saved = service.get_portfolio(portfolio.id, "user-1")
     assert saved.name == "Retirement"
-    assert saved.holdings == {"AAPL": 12}
+    assert saved.holdings["AAPL"].quantity == 12
+    assert saved.holdings["AAPL"].purchase_price == 100.50
     assert service.list_portfolios("user-1")[0].id == portfolio.id
+
+
+def test_holding_requires_a_whole_number_and_preserves_purchase_price() -> None:
+    service = PortfolioService(InMemoryPortfolioRepository())
+    portfolio = service.create_portfolio("user-1", "Long term")
+
+    with pytest.raises(ValueError, match="whole-number"):
+        service.add_holding(portfolio.id, "AAPL", 2.5, 100)
+
+    service.add_holding(portfolio.id, "AAPL", 3, 125.75)
+    saved = service.get_portfolio(portfolio.id, "user-1")
+    assert saved.to_document()["holdings"]["AAPL"] == {
+        "quantity": 3,
+        "purchase_price": 125.75,
+    }
 
 
 def test_portfolio_access_is_scoped_to_user() -> None:
