@@ -8,7 +8,7 @@
 
 Streamlit finance dashboard that downloads stock prices from Yahoo Finance, optionally imports a CSV watchlist of tickers, computes metrics (volatility, comparison, correlation, etc.), and renders interactive Plotly charts. Uses a reactive controller pattern suited to Streamlit's rerun model.
 
-**Stack:** Python 3.14 · Streamlit · yfinance · pandas · numpy · plotly · pytest
+**Stack:** Python 3.14 · Streamlit · yfinance · pandas · numpy · plotly · pymongo · scikit-learn · pytest
 
 ---
 
@@ -52,10 +52,12 @@ flowchart TD
 
     E --> E1[Overview page]
     E --> E2[One page per active metric]
+    B --> H[Authentication and portfolio management]
 
     E2 --> F[Metrics.calculate]
     F --> G[UI.show]
     G --> G1[Plotly line / heatmap / dual charts]
+    H --> H1[MongoDB Atlas repositories]
 ```
 
 ### Design decisions
@@ -67,6 +69,9 @@ flowchart TD
 | **Multi-page navigation** | `st.navigation` gives one sidebar page per metric plus an Overview page. |
 | **MetricRegistry** | Decouples metric metadata (graph type, ticker requirements) from calculation logic. Optional metrics are toggled in the UI. |
 | **Simple watchlist CSV** | CSV uploads are used as a lightweight ticker watchlist import. The app extracts valid symbols from the file rather than parsing historical price data. |
+| **Repository boundary** | MongoDB Atlas persistence is accessed through repository adapters; in-memory adapters support local development and tests when `MONGODB_URI` is absent. |
+| **Application authentication** | Users authenticate by email and scrypt-hashed password in main-page tabs; the signed-in user is held in Streamlit session state. |
+| **Portfolio navigation** | Portfolio management is a dedicated navigation page; creation uses an explicit green action button rather than a selection option. |
 
 ### Assumptions
 
@@ -97,6 +102,14 @@ Finance Dashboard Srikaran/
 ```
 
 ---
+
+### Added application modules
+
+- `finance_dashboard/models.py` — User and Portfolio document models
+- `finance_dashboard/portfolio_repository.py` — MongoDB Atlas and in-memory repositories
+- `finance_dashboard/portfolio_service.py` — Portfolio CRUD use cases
+- `finance_dashboard/auth.py` — Signup/login password service
+- `finance_dashboard/analysis.py` — Returns, volatility, clustering, and recommendations
 
 ## Core entities
 
@@ -189,6 +202,7 @@ display_metrics()
 | `enabled_optional_metrics` | `list[str]` | Persisted optional metric selection |
 | `current_user_input` | `UserInput` | Inputs for the active app rerun |
 | `last_uploaded_file_id` | `str` | Name of the last uploaded CSV file to detect changes |
+| `current_user` | `User` | Signed-in user for the current Streamlit session |
 
 **Cache invalidation:** Re-download when `refresh_data` is clicked, cache is empty, or tickers change (yfinance source only). CSV data persists until refresh or new upload.
 
@@ -205,6 +219,8 @@ display_metrics()
 | Rolling Correlation | 🔗 | Pairwise rolling correlation |
 | Sharpe Ratio | 📐 | Optional — enable in sidebar |
 | Cumulative Returns | 📈 | Optional — enable in sidebar |
+| Portfolio Management | 💼 | Dedicated page for creating portfolios and editing, adding, or removing holdings |
+| Portfolio management | | Create portfolios, edit/remove holdings, and save them to MongoDB when configured |
 
 ---
 
@@ -237,6 +253,7 @@ display_metrics()
 - Alternative data sources (Alpha Vantage, FRED, Bloomberg)
 - `MetricRegistry.register()` calculator hook is defined but dispatch still centralized in `Metrics.calculate` — refactor if plugin-style metrics are needed
 - Integration / Streamlit app tests (only unit tests exist today)
+- Production session-token storage and password reset flow
 
 ---
 
@@ -252,6 +269,8 @@ display_metrics()
 | 2026-07-16 | Antigravity | Added support for custom CSV date column selection, cached raw uploaded CSV data, and added unit tests (14/14 passing) |
 | 2026-07-16 | Antigravity | Simplified CSV uploading to parse stock tickers only, moved configuration to the main page with a default 30-day range, and updated unit tests (13/13 passing) |
 | 2026-07-16 | Copilot | Reviewed AGENTS.md against the current controller flow, CSV watchlist behavior, and session-state usage to keep the handoff notes accurate |
+| 2026-09-02 | Copilot | Added MongoDB Atlas repositories, authenticated portfolio CRUD, returns, volatility, clustering, and similarity recommendations |
+| 2026-09-02 | Copilot | Moved authentication to main-page tabs, isolated portfolio management as a navigation page, fixed portfolio creation, and preserved local fallback data across reruns |
 
 ---
 

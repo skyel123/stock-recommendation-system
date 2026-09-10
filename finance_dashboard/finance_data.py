@@ -38,6 +38,7 @@ class FinanceData:
         tickers: list[str],
         start: date,
         end: date,
+        timeout_seconds: int | None = None,
     ) -> pd.DataFrame:
         """Fetch adjusted close prices from Yahoo Finance."""
         if not tickers:

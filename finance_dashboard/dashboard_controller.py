@@ -9,8 +9,12 @@ import pandas as pd
 import streamlit as st
 
 from finance_dashboard.finance_data import FinanceData
+from finance_dashboard.analysis import PortfolioAnalysis
+from finance_dashboard.auth import AuthService
 from finance_dashboard.metric_registry import MetricDefinition, MetricRegistry
 from finance_dashboard.metrics import Metrics
+from finance_dashboard.portfolio_repository import InMemoryPortfolioRepository, InMemoryUserRepository, MongoRepositories
+from finance_dashboard.portfolio_service import PortfolioService
 from finance_dashboard.ui import UI
 
 
@@ -19,6 +23,9 @@ SESSION_PRICES = "cached_prices"
 SESSION_TICKERS = "cached_tickers"
 SESSION_SOURCE = "data_source"
 SESSION_USER_INPUT = "current_user_input"
+SESSION_USER = "current_user"
+LOCAL_USER_REPOSITORY = InMemoryUserRepository()
+LOCAL_PORTFOLIO_REPOSITORY = InMemoryPortfolioRepository()
 
 
 def _metric_url_path(metric_name: str) -> str:
@@ -48,7 +55,87 @@ class DashboardController:
         self.metrics = Metrics()
         self.ui = UI()
         self.registry = MetricRegistry()
+        try:
+            repositories = MongoRepositories()
+        except Exception:
+            repositories = None
+        self.auth = AuthService(repositories or LOCAL_USER_REPOSITORY)
+        self.portfolios = PortfolioService(repositories or LOCAL_PORTFOLIO_REPOSITORY)
+        self.analysis = PortfolioAnalysis()
         self._ensure_session_state()
+
+    def _authenticate(self) -> bool:
+        if SESSION_USER in st.session_state:
+            st.write(f"Signed in as **{st.session_state[SESSION_USER].email}**")
+            if st.button("Log out", use_container_width=False):
+                del st.session_state[SESSION_USER]
+                st.rerun()
+            return True
+        st.title("Welcome to Finance Dashboard")
+        login_tab, signup_tab = st.tabs(["Log in", "Sign up"])
+        with login_tab:
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Password", type="password", key="login_password")
+            if st.button("Log in", type="primary", key="login_submit"):
+                self._submit_auth("login", email, password)
+        with signup_tab:
+            email = st.text_input("Email", key="signup_email")
+            password = st.text_input("Password", type="password", key="signup_password")
+            if st.button("Sign up", type="primary", key="signup_submit"):
+                self._submit_auth("signup", email, password)
+        return False
+
+    def _submit_auth(self, action: str, email: str, password: str) -> None:
+        try:
+            user = self.auth.login(email, password) if action == "login" else self.auth.signup(email, password)
+            st.session_state[SESSION_USER] = user
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Unable to {action}: {exc}")
+
+    def _render_portfolio_manager(self, user_id: str) -> None:
+        st.title("Portfolio Management")
+        st.caption("Create portfolios and manage their holdings.")
+        st.markdown("<style>button[kind='primary'] { background: #15803d; border-color: #15803d; }</style>", unsafe_allow_html=True)
+        portfolios = self.portfolios.list_portfolios(user_id)
+        if st.button("+ Create new portfolio", type="primary", key="create_portfolio_button"):
+            st.session_state["creating_portfolio"] = True
+        if st.session_state.get("creating_portfolio"):
+            with st.form("create_portfolio_form"):
+                name = st.text_input("Portfolio name")
+                submitted = st.form_submit_button("Save portfolio", type="primary")
+            if submitted:
+                try:
+                    self.portfolios.create_portfolio(user_id, name)
+                    st.session_state["creating_portfolio"] = False
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        if not portfolios:
+            st.info("You have no saved portfolios yet.")
+            return
+        names = [portfolio.name for portfolio in portfolios]
+        selected_name = st.selectbox("Portfolio", names)
+        portfolio = portfolios[names.index(selected_name)]
+        for ticker, quantity in portfolio.holdings.items():
+            col1, col2, col3 = st.columns([2, 1, 1])
+            col1.write(ticker)
+            new_quantity = col2.number_input("Quantity", min_value=0.01, value=float(quantity), key=f"quantity_{portfolio.id}_{ticker}")
+            if col3.button("Remove", key=f"remove_{portfolio.id}_{ticker}"):
+                self.portfolios.remove_holding(portfolio.id, ticker)
+                st.rerun()
+            if new_quantity != quantity:
+                self.portfolios.edit_holding(portfolio.id, ticker, new_quantity)
+        ticker = st.text_input("Add stock ticker", key=f"add_ticker_{portfolio.id}")
+        quantity = st.number_input("Shares", min_value=0.01, value=1.0, key=f"add_quantity_{portfolio.id}")
+        if st.button("Add stock"):
+            try:
+                self.portfolios.add_holding(portfolio.id, ticker, quantity)
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+        if portfolio.holdings and st.button("Analyze this portfolio"):
+            st.session_state["tickers_list"] = list(portfolio.holdings)
 
     def _ensure_session_state(self) -> None:
         if SESSION_PRICES not in st.session_state:
@@ -266,6 +353,15 @@ class DashboardController:
 
         self.ui.show_overview_cards(prices, list(prices.columns))
 
+        with st.expander("Risk groups and recommendations"):
+            method = st.selectbox("Clustering method", ["kmeans", "dbscan"])
+            frequency = st.selectbox("Volatility frequency", ["annualized", "daily", "monthly"])
+            st.dataframe(self.analysis.volatility(prices, frequency), use_container_width=True)
+            if len(prices.columns) >= 2:
+                st.dataframe(self.analysis.risk_groups(prices, method=method), use_container_width=True)
+                target = st.selectbox("Find similar stocks", list(prices.columns))
+                st.dataframe(self.analysis.recommendations(prices, target), use_container_width=True)
+
         st.subheader("Latest prices")
         latest = prices.tail(10).sort_index(ascending=False)
         self.ui.show_raw_data(latest)
@@ -279,6 +375,10 @@ class DashboardController:
         user_input = st.session_state[SESSION_USER_INPUT]
         self._render_overview_page(user_input)
 
+    def _run_portfolio_page(self) -> None:
+        user = st.session_state[SESSION_USER]
+        self._render_portfolio_manager(user.id)
+
     def _make_metric_page_runner(self, metric_name: str):
         def run_metric_page() -> None:
             user_input = st.session_state[SESSION_USER_INPUT]
@@ -291,6 +391,8 @@ class DashboardController:
         return run_metric_page
 
     def display_metrics(self) -> None:
+        if not self._authenticate():
+            return
         user_input = self.accept_user_input()
         st.session_state[SESSION_USER_INPUT] = user_input
         active_metrics = self.registry.active_metrics(user_input.enabled_optional_metrics)
@@ -303,6 +405,14 @@ class DashboardController:
                 default=True,
             )
         ]
+        pages.append(
+            st.Page(
+                self._run_portfolio_page,
+                title="Portfolio Management",
+                icon="💼",
+                url_path="portfolio-management",
+            )
+        )
 
         icons = {
             "Rolling Volatility": "📉",
