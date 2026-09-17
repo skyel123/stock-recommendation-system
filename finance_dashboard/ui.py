@@ -58,6 +58,43 @@ class UI:
         st.plotly_chart(fig, use_container_width=True)
 
     @staticmethod
+    def show_risk_groups(risk_groups: pd.DataFrame, title: str = "Portfolio Risk Groups") -> None:
+        if risk_groups.empty:
+            st.warning("No risk groups to display.")
+            return
+
+        fig = px.scatter(
+            risk_groups,
+            x="annual_volatility",
+            y="annual_return",
+            color="risk_group",
+            text="ticker",
+            hover_name="ticker",
+            hover_data={
+                "annual_return": ":.2%",
+                "annual_volatility": ":.2%",
+                "cluster": True,
+                "risk_group": True,
+            },
+            category_orders={
+                "risk_group": ["Low Risk", "Medium Risk", "High Risk"],
+            },
+            color_discrete_map={
+                "Low Risk": "#15803d",
+                "Medium Risk": "#d97706",
+                "High Risk": "#b91c1c",
+            },
+            title=title,
+        )
+        fig.update_traces(textposition="top center", marker={"size": 12})
+        fig.update_layout(
+            xaxis_title="Annualized volatility",
+            yaxis_title="Annualized return",
+            legend_title="Risk group",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    @staticmethod
     def show_summary_table(prices: pd.DataFrame) -> None:
         summary = prices.describe().T[["mean", "std", "min", "max"]]
         summary.columns = ["Mean", "Std Dev", "Min", "Max"]

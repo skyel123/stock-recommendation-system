@@ -171,8 +171,69 @@ class DashboardController:
                 st.rerun()
             except ValueError as exc:
                 st.error(str(exc))
-        if portfolio.holdings and st.button("Analyze this portfolio"):
-            st.session_state["tickers_list"] = list(portfolio.holdings)
+        if not portfolio.holdings:
+            st.warning("Add at least one stock before analyzing this portfolio.")
+        elif st.button("Analyze this portfolio", key=f"analyze_{portfolio.id}"):
+            self._render_portfolio_analysis(portfolio)
+
+    def _render_portfolio_analysis(self, portfolio) -> None:
+        try:
+            portfolio = self.portfolios.get_portfolio(
+                portfolio.id,
+                st.session_state[SESSION_USER].id,
+            )
+        except (KeyError, PermissionError) as exc:
+            st.error(f"Unable to load this portfolio: {exc}")
+            return
+
+        tickers = list(portfolio.holdings)
+        if not tickers:
+            st.warning("Add at least one stock before analyzing this portfolio.")
+            return
+
+        st.subheader(f"Portfolio Analysis: {portfolio.name}")
+        try:
+            prices = self.finance_data.download(
+                tickers,
+                start=date.today() - timedelta(days=365),
+                end=date.today(),
+            )
+            result = self.analysis.analyze_portfolio(prices)
+        except ValueError as exc:
+            st.error(f"Unable to analyze this portfolio: {exc}")
+            return
+
+        if prices.empty or prices.columns.empty:
+            st.warning("No market data is available for this portfolio.")
+            return
+
+        self.ui.show(prices, "line", title="Portfolio Historical Prices")
+        st.write("Annualized return and volatility")
+        st.dataframe(
+            result["metrics"].style.format(
+                {"annual_return": "{:.2%}", "annual_volatility": "{:.2%}"}
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        cluster_count = result["cluster_count"]
+        if cluster_count is None:
+            st.info("Fewer than four assets: clustering was skipped. Review the return and volatility metrics above.")
+            return
+
+        st.write(f"Risk groups from K-Means ({cluster_count} clusters)")
+        self.ui.show_risk_groups(
+            result["risk_groups"],
+            title="Portfolio Risk Groups by Return and Volatility",
+        )
+        st.dataframe(
+            result["risk_groups"].style.format(
+                {"annual_return": "{:.2%}", "annual_volatility": "{:.2%}"}
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
 
     def _get_current_price(self, ticker: str) -> float | None:
         normalized = ticker.strip().upper()

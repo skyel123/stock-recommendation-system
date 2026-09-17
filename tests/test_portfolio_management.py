@@ -87,3 +87,39 @@ def test_analysis_clusters_risk_groups() -> None:
     result = PortfolioAnalysis().risk_groups(prices, method="kmeans", groups=2)
     assert set(result.columns) == {"ticker", "risk_group"}
     assert len(result) == 2
+
+
+def test_portfolio_analysis_skips_small_clusters_and_labels_risk_groups() -> None:
+    dates = pd.date_range("2024-01-01", periods=80, freq="B")
+    prices = pd.DataFrame(
+        {
+            "A": 100 * (1.001 ** np.arange(len(dates))),
+            "B": 100 * (1.002 ** np.arange(len(dates))),
+            "C": 100 * (1.003 ** np.arange(len(dates))),
+            "D": [100 + (i % 2) * 10 for i in range(len(dates))],
+            "E": [100 + (i % 3) * 8 for i in range(len(dates))],
+            "F": [100 + (i % 4) * 12 for i in range(len(dates))],
+        },
+        index=dates,
+    )
+    analysis = PortfolioAnalysis()
+
+    small = analysis.analyze_portfolio(prices[["A", "B", "C"]])
+    assert small["cluster_count"] is None
+    assert set(small["metrics"].columns) == {"ticker", "annual_return", "annual_volatility"}
+
+    result = analysis.analyze_portfolio(prices)
+    assert result["cluster_count"] == 3
+    assert set(result["risk_groups"]["risk_group"]) <= {"Low Risk", "Medium Risk", "High Risk"}
+
+    medium = analysis.analyze_portfolio(prices[["A", "B", "C", "D", "E"]])
+    assert medium["cluster_count"] == 2
+    assert set(medium["risk_groups"]["risk_group"]) <= {"Low Risk", "High Risk"}
+
+
+def test_portfolio_analysis_handles_empty_portfolios() -> None:
+    result = PortfolioAnalysis().analyze_portfolio(pd.DataFrame())
+
+    assert result["metrics"].empty
+    assert result["risk_groups"].empty
+    assert result["cluster_count"] is None
