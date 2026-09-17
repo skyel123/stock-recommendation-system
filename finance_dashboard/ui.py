@@ -65,14 +65,14 @@ class UI:
 
         fig = px.scatter(
             risk_groups,
-            x="annual_volatility",
-            y="annual_return",
+            x="period_volatility",
+            y="period_return",
             color="risk_group",
             text="ticker",
             hover_name="ticker",
             hover_data={
-                "annual_return": ":.2%",
-                "annual_volatility": ":.2%",
+                "period_return": ":.2%",
+                "period_volatility": ":.2%",
                 "cluster": True,
                 "risk_group": True,
             },
@@ -88,8 +88,8 @@ class UI:
         )
         fig.update_traces(textposition="top center", marker={"size": 12})
         fig.update_layout(
-            xaxis_title="Annualized volatility",
-            yaxis_title="Annualized return",
+            xaxis_title="Volatility for selected period",
+            yaxis_title="Return for selected period",
             legend_title="Risk group",
         )
         st.plotly_chart(fig, use_container_width=True)

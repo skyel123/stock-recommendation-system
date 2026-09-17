@@ -77,7 +77,7 @@ flowchart TD
 ### Assumptions
 
 - Tickers are Yahoo Finance symbols (US-style, e.g. `AAPL`, `MSFT`; international needs suffix e.g. `BMW.DE`).
-- Volatility is annualized rolling std of daily returns (`× √252`), default 21-day window.
+- Portfolio analysis reports return and rolling daily-return volatility for the selected date range, with a default 21-day window.
 - Stock comparison supports **normalized** (base 100), **raw prices**, or **both**.
 - No API keys required (yfinance is free).
 - PowerShell venv activation may require `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`.
@@ -207,7 +207,7 @@ display_metrics()
 
 Portfolio holdings are stored as ticker-keyed records with an integer `quantity` and a `purchase_price`. Legacy numeric holding values are read as quantities with a zero purchase price.
 
-Portfolio analysis loads the selected date range, reports annualized return and rolling-window volatility, skips clustering for 1–3 assets, uses 2 K-Means clusters for 4–5 assets, and uses up to 3 clusters for 6 or more assets. Cluster labels are mapped to Low, Medium, or High Risk by cluster volatility.
+Portfolio analysis loads the selected date range, reports actual period return and rolling daily-return volatility, skips clustering for 1–3 assets, uses 2 K-Means clusters for 4–5 assets, and uses up to 3 clusters for 6 or more assets. Cluster labels are mapped to Low, Medium, or High Risk by cluster volatility.
 
 **Cache invalidation:** Re-download when `refresh_data` is clicked, cache is empty, or tickers change (yfinance source only). CSV data persists until refresh or new upload.
 
@@ -288,6 +288,7 @@ Portfolio analysis loads the selected date range, reports annualized return and 
 | 2026-09-16 | Copilot | Added a Plotly return-versus-volatility scatter plot for portfolio risk groups |
 | 2026-09-16 | Copilot | Added user-selected portfolio analysis dates and volatility window controls |
 | 2026-09-16 | Copilot | Grouped portfolio analysis inputs and action inside a Streamlit expander |
+| 2026-09-16 | Copilot | Changed portfolio analysis to report actual selected-period return and non-annualized volatility |
 
 ---
 

@@ -21,11 +21,16 @@ class PortfolioAnalysis:
             return {"metrics": pd.DataFrame(), "risk_groups": pd.DataFrame(), "cluster_count": None}
 
         daily = self.returns(prices)
+        period_return = prices.apply(
+            lambda series: series.dropna().iloc[-1] / series.dropna().iloc[0] - 1
+            if len(series.dropna()) >= 2
+            else 0.0
+        )
         rolling_volatility = daily.rolling(window=window, min_periods=2).std().iloc[-1]
         metrics = pd.DataFrame(
             {
-                "annual_return": daily.mean() * TRADING_DAYS_PER_YEAR,
-                "annual_volatility": rolling_volatility * TRADING_DAYS_PER_YEAR**0.5,
+                "period_return": period_return,
+                "period_volatility": rolling_volatility,
             }
         ).replace([float("inf"), -float("inf")], pd.NA).fillna(0.0)
 
@@ -41,13 +46,13 @@ class PortfolioAnalysis:
         from sklearn.cluster import KMeans
         from sklearn.preprocessing import StandardScaler
 
-        features = metrics[["annual_return", "annual_volatility"]]
+        features = metrics[["period_return", "period_volatility"]]
         scaled = StandardScaler().fit_transform(features)
         model = KMeans(n_clusters=cluster_count, n_init=10, random_state=42)
         labels = model.fit_predict(scaled)
         centroids = pd.DataFrame(
-            features.assign(cluster=labels).groupby("cluster")["annual_volatility"].mean()
-        ).sort_values("annual_volatility")
+            features.assign(cluster=labels).groupby("cluster")["period_volatility"].mean()
+        ).sort_values("period_volatility")
         risk_names = (
             ["Low Risk", "High Risk"]
             if cluster_count == 2

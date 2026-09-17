@@ -106,7 +106,10 @@ def test_portfolio_analysis_skips_small_clusters_and_labels_risk_groups() -> Non
 
     small = analysis.analyze_portfolio(prices[["A", "B", "C"]])
     assert small["cluster_count"] is None
-    assert set(small["metrics"].columns) == {"ticker", "annual_return", "annual_volatility"}
+    assert set(small["metrics"].columns) == {"ticker", "period_return", "period_volatility"}
+    assert small["metrics"].loc[small["metrics"]["ticker"] == "A", "period_return"].iloc[0] == pytest.approx(
+        prices["A"].iloc[-1] / prices["A"].iloc[0] - 1
+    )
 
     result = analysis.analyze_portfolio(prices)
     assert result["cluster_count"] == 3

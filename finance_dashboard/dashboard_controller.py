@@ -240,10 +240,10 @@ class DashboardController:
             return
 
         self.ui.show(prices, "line", title="Portfolio Historical Prices")
-        st.write("Annualized return and volatility")
+        st.write("Return and volatility for the selected date range")
         st.dataframe(
             result["metrics"].style.format(
-                {"annual_return": "{:.2%}", "annual_volatility": "{:.2%}"}
+            {"period_return": "{:.2%}", "period_volatility": "{:.2%}"}
             ),
             use_container_width=True,
             hide_index=True,
@@ -261,7 +261,7 @@ class DashboardController:
         )
         st.dataframe(
             result["risk_groups"].style.format(
-                {"annual_return": "{:.2%}", "annual_volatility": "{:.2%}"}
+                {"period_return": "{:.2%}", "period_volatility": "{:.2%}"}
             ),
             use_container_width=True,
             hide_index=True,
