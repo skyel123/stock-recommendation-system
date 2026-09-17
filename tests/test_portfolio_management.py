@@ -123,3 +123,21 @@ def test_portfolio_analysis_handles_empty_portfolios() -> None:
     assert result["metrics"].empty
     assert result["risk_groups"].empty
     assert result["cluster_count"] is None
+
+
+def test_portfolio_analysis_uses_requested_volatility_window() -> None:
+    dates = pd.date_range("2024-01-01", periods=40, freq="B")
+    prices = pd.DataFrame(
+        {"A": 100 + np.arange(len(dates)), "B": 100 + (np.arange(len(dates)) % 3) * 5},
+        index=dates,
+    )
+
+    short_window = PortfolioAnalysis().analyze_portfolio(prices, window=5)
+    long_window = PortfolioAnalysis().analyze_portfolio(prices, window=15)
+
+    assert not short_window["metrics"].equals(long_window["metrics"])
+
+
+def test_portfolio_analysis_rejects_invalid_window() -> None:
+    with pytest.raises(ValueError, match="window"):
+        PortfolioAnalysis().analyze_portfolio(pd.DataFrame(), window=1)

@@ -8,16 +8,24 @@ from finance_dashboard.metrics import TRADING_DAYS_PER_YEAR
 
 
 class PortfolioAnalysis:
-    def analyze_portfolio(self, prices: pd.DataFrame) -> dict[str, pd.DataFrame | int | None]:
+    def analyze_portfolio(
+        self,
+        prices: pd.DataFrame,
+        window: int = 21,
+    ) -> dict[str, pd.DataFrame | int | None]:
         """Build portfolio features and risk groups without any UI concerns."""
+        if window < 2:
+            raise ValueError("window must be at least 2.")
+
         if prices.empty or len(prices.columns) == 0:
             return {"metrics": pd.DataFrame(), "risk_groups": pd.DataFrame(), "cluster_count": None}
 
         daily = self.returns(prices)
+        rolling_volatility = daily.rolling(window=window, min_periods=2).std().iloc[-1]
         metrics = pd.DataFrame(
             {
                 "annual_return": daily.mean() * TRADING_DAYS_PER_YEAR,
-                "annual_volatility": daily.std() * TRADING_DAYS_PER_YEAR**0.5,
+                "annual_volatility": rolling_volatility * TRADING_DAYS_PER_YEAR**0.5,
             }
         ).replace([float("inf"), -float("inf")], pd.NA).fillna(0.0)
 

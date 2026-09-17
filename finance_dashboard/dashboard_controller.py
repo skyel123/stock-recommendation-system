@@ -171,12 +171,41 @@ class DashboardController:
                 st.rerun()
             except ValueError as exc:
                 st.error(str(exc))
-        if not portfolio.holdings:
-            st.warning("Add at least one stock before analyzing this portfolio.")
-        elif st.button("Analyze this portfolio", key=f"analyze_{portfolio.id}"):
-            self._render_portfolio_analysis(portfolio)
+        with st.expander("Analyze portfolio", expanded=False):
+            analysis_start = st.date_input(
+                "Analysis start date",
+                value=date.today() - timedelta(days=365),
+                key=f"analysis_start_{portfolio.id}",
+            )
+            analysis_end = st.date_input(
+                "Analysis end date",
+                value=date.today(),
+                key=f"analysis_end_{portfolio.id}",
+            )
+            analysis_window = st.slider(
+                "Analysis volatility window (days)",
+                min_value=5,
+                max_value=90,
+                value=21,
+                key=f"analysis_window_{portfolio.id}",
+            )
+            if not portfolio.holdings:
+                st.warning("Add at least one stock before analyzing this portfolio.")
+            elif st.button("Analyze this portfolio", key=f"analyze_{portfolio.id}"):
+                self._render_portfolio_analysis(
+                    portfolio,
+                    start_date=analysis_start,
+                    end_date=analysis_end,
+                    window=analysis_window,
+                )
 
-    def _render_portfolio_analysis(self, portfolio) -> None:
+    def _render_portfolio_analysis(
+        self,
+        portfolio,
+        start_date: date,
+        end_date: date,
+        window: int,
+    ) -> None:
         try:
             portfolio = self.portfolios.get_portfolio(
                 portfolio.id,
@@ -190,15 +219,18 @@ class DashboardController:
         if not tickers:
             st.warning("Add at least one stock before analyzing this portfolio.")
             return
+        if start_date > end_date:
+            st.error("Analysis start date must be on or before the end date.")
+            return
 
         st.subheader(f"Portfolio Analysis: {portfolio.name}")
         try:
             prices = self.finance_data.download(
                 tickers,
-                start=date.today() - timedelta(days=365),
-                end=date.today(),
+                start=start_date,
+                end=end_date,
             )
-            result = self.analysis.analyze_portfolio(prices)
+            result = self.analysis.analyze_portfolio(prices, window=window)
         except ValueError as exc:
             st.error(f"Unable to analyze this portfolio: {exc}")
             return

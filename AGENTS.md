@@ -72,7 +72,7 @@ flowchart TD
 | **Repository boundary** | MongoDB Atlas persistence is accessed through repository adapters; in-memory adapters support local development and tests when `MONGODB_URI` is absent. |
 | **Application authentication** | Users authenticate by email and scrypt-hashed password in main-page tabs; the signed-in user is held in Streamlit session state. |
 | **Portfolio navigation** | Portfolio management is a dedicated navigation page; creation uses an explicit green action button rather than a selection option. Holding rows validate tickers, record whole-share quantities and purchase prices, show current profit/loss, and link back to the dashboard ticker view. |
-| **Portfolio analysis** | The Analyze this portfolio action reloads the selected portfolio, downloads one year of prices, and delegates feature calculation, scaling, K-Means, and risk naming to `PortfolioAnalysis`. Clustering is skipped for 1–3 assets, uses up to 2 clusters for 4–5 assets, and up to 3 clusters for 6+ assets. Clustered portfolios are visualized as a return-versus-volatility scatter plot colored by risk group. |
+| **Portfolio analysis** | The Analyze this portfolio expander reloads the selected portfolio, accepts a user-selected start/end date and volatility window, downloads that range, and delegates feature calculation, scaling, K-Means, and risk naming to `PortfolioAnalysis`. Clustering is skipped for 1–3 assets, uses up to 2 clusters for 4–5 assets, and up to 3 clusters for 6+ assets. Clustered portfolios are visualized as a return-versus-volatility scatter plot colored by risk group. |
 
 ### Assumptions
 
@@ -207,7 +207,7 @@ display_metrics()
 
 Portfolio holdings are stored as ticker-keyed records with an integer `quantity` and a `purchase_price`. Legacy numeric holding values are read as quantities with a zero purchase price.
 
-Portfolio analysis loads one year of market data, reports annualized return and volatility, skips clustering for 1–3 assets, uses 2 K-Means clusters for 4–5 assets, and uses up to 3 clusters for 6 or more assets. Cluster labels are mapped to Low, Medium, or High Risk by cluster volatility.
+Portfolio analysis loads the selected date range, reports annualized return and rolling-window volatility, skips clustering for 1–3 assets, uses 2 K-Means clusters for 4–5 assets, and uses up to 3 clusters for 6 or more assets. Cluster labels are mapped to Low, Medium, or High Risk by cluster volatility.
 
 **Cache invalidation:** Re-download when `refresh_data` is clicked, cache is empty, or tickers change (yfinance source only). CSV data persists until refresh or new upload.
 
@@ -286,6 +286,8 @@ Portfolio analysis loads one year of market data, reports annualized return and 
 | 2026-09-09 | Copilot | Implemented Analyze Portfolio metrics, scaled K-Means risk groups, asset-count safeguards, and Streamlit results rendering |
 | 2026-09-16 | Copilot | Reloaded the selected portfolio before analysis, added empty market-data handling, and covered empty portfolio analysis |
 | 2026-09-16 | Copilot | Added a Plotly return-versus-volatility scatter plot for portfolio risk groups |
+| 2026-09-16 | Copilot | Added user-selected portfolio analysis dates and volatility window controls |
+| 2026-09-16 | Copilot | Grouped portfolio analysis inputs and action inside a Streamlit expander |
 
 ---
 
