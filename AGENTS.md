@@ -8,7 +8,7 @@
 
 Streamlit finance dashboard that downloads stock prices from Yahoo Finance, optionally imports a CSV watchlist of tickers, computes metrics (volatility, comparison, correlation, etc.), and renders interactive Plotly charts. Uses a reactive controller pattern suited to Streamlit's rerun model.
 
-**Stack:** Python 3.14 · Streamlit · yfinance · pandas · numpy · plotly · pymongo · scikit-learn · pytest
+**Stack:** Python 3.14 · Streamlit · yfinance · pandas · numpy · plotly · pymongo · scikit-learn · groq · pytest
 
 ---
 
@@ -73,6 +73,7 @@ flowchart TD
 | **Application authentication** | Users authenticate by email and scrypt-hashed password in main-page tabs; the signed-in user is held in Streamlit session state. |
 | **Portfolio navigation** | Portfolio management is a dedicated navigation page; creation uses an explicit green action button rather than a selection option. Holding rows validate tickers, record whole-share quantities and purchase prices, show current profit/loss, and link back to the dashboard ticker view. |
 | **Portfolio analysis** | The Analyze this portfolio expander reloads the selected portfolio, accepts a user-selected start/end date and volatility window, downloads that range, and delegates feature calculation, scaling, K-Means, and risk naming to `PortfolioAnalysis`. Clustering is skipped for 1–3 assets, uses up to 2 clusters for 4–5 assets, and up to 3 clusters for 6+ assets. Clustered portfolios are visualized as a return-versus-volatility scatter plot colored by risk group. |
+| **LLM portfolio assistant** | `PortfolioAssistant` sends only application-owned holdings, prices, calculated metrics, and clustering results to Groq for explanation. Conversation messages are persisted per user and portfolio in MongoDB, with an in-memory fallback for local development. |
 
 ### Assumptions
 
@@ -80,6 +81,7 @@ flowchart TD
 - Portfolio analysis reports return and rolling daily-return volatility for the selected date range, with a default 21-day window.
 - Stock comparison supports **normalized** (base 100), **raw prices**, or **both**.
 - No API keys required (yfinance is free).
+- Groq uses `GROQ_API_KEY` from `.streamlit/secrets.toml` or the environment. The model defaults in code, with an optional `GROQ_MODEL` environment-variable override; it is explanatory only and does not calculate financial values.
 - PowerShell venv activation may require `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`.
 
 ---
@@ -111,6 +113,7 @@ Finance Dashboard Srikaran/
 - `finance_dashboard/portfolio_service.py` — Portfolio CRUD use cases
 - `finance_dashboard/auth.py` — Signup/login password service
 - `finance_dashboard/analysis.py` — Returns, volatility, clustering, and recommendations
+- `finance_dashboard/portfolio_assistant.py` — Constrained Groq assistant and context serialization
 
 ## Core entities
 
@@ -204,10 +207,13 @@ display_metrics()
 | `current_user_input` | `UserInput` | Inputs for the active app rerun |
 | `last_uploaded_file_id` | `str` | Name of the last uploaded CSV file to detect changes |
 | `current_user` | `User` | Signed-in user for the current Streamlit session |
+| `portfolio_analysis_<id>` | `dict` | Computed portfolio analysis snapshot retained across chat reruns |
 
 Portfolio holdings are stored as ticker-keyed records with an integer `quantity` and a `purchase_price`. Legacy numeric holding values are read as quantities with a zero purchase price.
 
 Portfolio analysis loads the selected date range, reports actual period return and rolling daily-return volatility, skips clustering for 1–3 assets, uses 2 K-Means clusters for 4–5 assets, and uses up to 3 clusters for 6 or more assets. Cluster labels are mapped to Low, Medium, or High Risk by cluster volatility.
+
+Portfolio assistant conversations are keyed by user and portfolio, loaded from `portfolio_conversations`, and include prior messages when calling Groq. The assistant is limited to stock-market context and the supplied analysis snapshot.
 
 **Cache invalidation:** Re-download when `refresh_data` is clicked, cache is empty, or tickers change (yfinance source only). CSV data persists until refresh or new upload.
 
@@ -247,6 +253,7 @@ Portfolio analysis loads the selected date range, reports actual period return a
 |---|---|
 | `tests/test_metrics.py` | Volatility, comparison modes, correlation, date filter, Sharpe, cumulative returns, registry, CSV loading (watchlist tickers) |
 | `tests/test_portfolio_management.py` | Portfolio CRUD, authentication, portfolio return/volatility analysis, K-Means risk grouping, and empty/small portfolio safeguards |
+| `tests/test_portfolio_management.py` | Also covers assistant context fidelity and in-memory conversation isolation |
 | `finance_dashboard/ui.py` | Plotly rendering for portfolio risk-group scatter visualization |
 
 **Convention:** Write tests before or alongside new metric logic. Run full suite before finishing.
@@ -261,6 +268,7 @@ Portfolio analysis loads the selected date range, reports actual period return a
 - `MetricRegistry.register()` calculator hook is defined but dispatch still centralized in `Metrics.calculate` — refactor if plugin-style metrics are needed
 - Integration / Streamlit app tests (only unit tests exist today)
 - Production session-token storage and password reset flow
+- Mocked Groq API integration and Streamlit interaction tests
 
 ---
 
@@ -289,6 +297,8 @@ Portfolio analysis loads the selected date range, reports actual period return a
 | 2026-09-16 | Copilot | Added user-selected portfolio analysis dates and volatility window controls |
 | 2026-09-16 | Copilot | Grouped portfolio analysis inputs and action inside a Streamlit expander |
 | 2026-09-16 | Copilot | Changed portfolio analysis to report actual selected-period return and non-annualized volatility |
+| 2026-09-23 | Copilot | Added constrained Groq portfolio assistant in Analyze portfolio, persisted MongoDB conversations with local fallback, and added secrets/dependency configuration and tests |
+| 2026-09-23 | Copilot | Set the configurable Groq model default to `openai/gpt-oss-120b` |
 
 ---
 

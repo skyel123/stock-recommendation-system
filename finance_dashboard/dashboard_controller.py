@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -14,7 +14,13 @@ from finance_dashboard.auth import AuthService
 from finance_dashboard.metric_registry import MetricDefinition, MetricRegistry
 from finance_dashboard.metrics import Metrics
 from finance_dashboard.models import Holding
-from finance_dashboard.portfolio_repository import InMemoryPortfolioRepository, InMemoryUserRepository, MongoRepositories
+from finance_dashboard.portfolio_assistant import ConversationMessage, PortfolioAssistant, new_message
+from finance_dashboard.portfolio_repository import (
+    InMemoryConversationRepository,
+    InMemoryPortfolioRepository,
+    InMemoryUserRepository,
+    MongoRepositories,
+)
 from finance_dashboard.portfolio_service import PortfolioService
 from finance_dashboard.ui import UI
 
@@ -27,6 +33,7 @@ SESSION_USER_INPUT = "current_user_input"
 SESSION_USER = "current_user"
 LOCAL_USER_REPOSITORY = InMemoryUserRepository()
 LOCAL_PORTFOLIO_REPOSITORY = InMemoryPortfolioRepository()
+LOCAL_CONVERSATION_REPOSITORY = InMemoryConversationRepository()
 
 
 def _metric_url_path(metric_name: str) -> str:
@@ -62,6 +69,8 @@ class DashboardController:
             repositories = None
         self.auth = AuthService(repositories or LOCAL_USER_REPOSITORY)
         self.portfolios = PortfolioService(repositories or LOCAL_PORTFOLIO_REPOSITORY)
+        self.conversations = repositories or LOCAL_CONVERSATION_REPOSITORY
+        self.assistant = PortfolioAssistant()
         self.analysis = PortfolioAnalysis()
         self._ensure_session_state()
 
@@ -191,13 +200,15 @@ class DashboardController:
             )
             if not portfolio.holdings:
                 st.warning("Add at least one stock before analyzing this portfolio.")
-            elif st.button("Analyze this portfolio", key=f"analyze_{portfolio.id}"):
+            if st.button("Analyze this portfolio", key=f"analyze_{portfolio.id}"):
                 self._render_portfolio_analysis(
                     portfolio,
                     start_date=analysis_start,
                     end_date=analysis_end,
                     window=analysis_window,
                 )
+            elif st.session_state.get(f"portfolio_analysis_{portfolio.id}"):
+                self._render_saved_portfolio_analysis(portfolio)
 
     def _render_portfolio_analysis(
         self,
@@ -239,6 +250,38 @@ class DashboardController:
             st.warning("No market data is available for this portfolio.")
             return
 
+        st.session_state[f"portfolio_analysis_{portfolio.id}"] = {
+            "portfolio": portfolio,
+            "prices": prices,
+            "result": result,
+            "start_date": start_date,
+            "end_date": end_date,
+            "window": window,
+        }
+
+        self._display_portfolio_analysis(portfolio, prices, result, start_date, end_date, window)
+
+    def _render_saved_portfolio_analysis(self, portfolio) -> None:
+        saved = st.session_state[f"portfolio_analysis_{portfolio.id}"]
+        self._display_portfolio_analysis(
+            saved["portfolio"],
+            saved["prices"],
+            saved["result"],
+            saved["start_date"],
+            saved["end_date"],
+            saved["window"],
+        )
+
+    def _display_portfolio_analysis(
+        self,
+        portfolio,
+        prices: pd.DataFrame,
+        result: dict,
+        start_date: date,
+        end_date: date,
+        window: int,
+    ) -> None:
+
         self.ui.show(prices, "line", title="Portfolio Historical Prices")
         st.write("Return and volatility for the selected date range")
         st.dataframe(
@@ -252,20 +295,65 @@ class DashboardController:
         cluster_count = result["cluster_count"]
         if cluster_count is None:
             st.info("Fewer than four assets: clustering was skipped. Review the return and volatility metrics above.")
-            return
-
-        st.write(f"Risk groups from K-Means ({cluster_count} clusters)")
-        self.ui.show_risk_groups(
-            result["risk_groups"],
-            title="Portfolio Risk Groups by Return and Volatility",
-        )
-        st.dataframe(
-            result["risk_groups"].style.format(
-                {"period_return": "{:.2%}", "period_volatility": "{:.2%}"}
+        else:
+            st.write(f"Risk groups from K-Means ({cluster_count} clusters)")
+            self.ui.show_risk_groups(
+                result["risk_groups"],
+                title="Portfolio Risk Groups by Return and Volatility",
             ),
-            use_container_width=True,
-            hide_index=True,
+            st.dataframe(
+                result["risk_groups"].style.format(
+                    {"period_return": "{:.2%}", "period_volatility": "{:.2%}"}
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        self._render_portfolio_assistant(portfolio, prices, result, start_date, end_date, window)
+
+    def _render_portfolio_assistant(
+        self,
+        portfolio,
+        prices: pd.DataFrame,
+        result: dict,
+        start_date: date,
+        end_date: date,
+        window: int,
+    ) -> None:
+        st.divider()
+        st.subheader("Portfolio Assistant")
+        st.caption("Ask about this portfolio's supplied holdings, metrics, and risk groups.")
+        st.caption(
+            "Suggested questions: What drove the risk groups? Which holding had the highest period return? "
+            "How should I read the volatility results?"
         )
+        user_id = st.session_state[SESSION_USER].id
+        history_documents = self.conversations.list_messages(user_id, portfolio.id)
+        history = [
+            ConversationMessage(item["role"], item["content"], item.get("created_at", datetime.now()))
+            for item in history_documents
+        ]
+        for message in history:
+            with st.chat_message(message.role):
+                st.markdown(message.content)
+
+        question = st.chat_input("Ask about this portfolio", key=f"portfolio_chat_{portfolio.id}")
+        if not question:
+            return
+        context = PortfolioAssistant.build_context(
+            portfolio, prices, result, start_date, end_date, window
+        )
+        try:
+            answer = self.assistant.answer(question, context, history)
+        except RuntimeError as exc:
+            st.error(str(exc))
+            return
+        self.conversations.append_messages(
+            user_id,
+            portfolio.id,
+            [new_message("user", question).to_document(), new_message("assistant", answer).to_document()],
+        )
+        st.rerun()
 
     def _get_current_price(self, ticker: str) -> float | None:
         normalized = ticker.strip().upper()

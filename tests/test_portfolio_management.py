@@ -7,6 +7,9 @@ import numpy as np
 from finance_dashboard.analysis import PortfolioAnalysis
 from finance_dashboard.auth import AuthService
 from finance_dashboard.portfolio_repository import InMemoryPortfolioRepository
+from finance_dashboard.portfolio_assistant import PortfolioAssistant
+from finance_dashboard.portfolio_repository import InMemoryConversationRepository
+from finance_dashboard.models import Holding, Portfolio
 from finance_dashboard.portfolio_service import PortfolioService
 
 
@@ -144,3 +147,36 @@ def test_portfolio_analysis_uses_requested_volatility_window() -> None:
 def test_portfolio_analysis_rejects_invalid_window() -> None:
     with pytest.raises(ValueError, match="window"):
         PortfolioAnalysis().analyze_portfolio(pd.DataFrame(), window=1)
+
+
+def test_portfolio_assistant_context_uses_existing_values_only() -> None:
+    portfolio = Portfolio.new("user-1", "Retirement")
+    portfolio.holdings = {"AAPL": Holding(2, 100.0)}
+    prices = pd.DataFrame({"AAPL": [110.0, 125.0]}, index=pd.date_range("2024-01-01", periods=2))
+    result = {
+        "metrics": pd.DataFrame([{"ticker": "AAPL", "period_return": 0.25, "period_volatility": 0.1}]),
+        "risk_groups": pd.DataFrame(),
+        "cluster_count": None,
+    }
+
+    context = PortfolioAssistant.build_context(
+        portfolio, prices, result, date(2024, 1, 1), date(2024, 1, 2), 21
+    )
+
+    assert context["holdings"]["AAPL"] == {
+        "quantity": 2,
+        "purchase_price": 100.0,
+        "current_price": 125.0,
+    }
+    assert context["calculated_metrics"][0]["period_return"] == 0.25
+    assert context["clustering"]["cluster_count"] is None
+
+
+def test_conversation_repository_round_trips_messages() -> None:
+    repository = InMemoryConversationRepository()
+    messages = [{"role": "user", "content": "What is volatility?"}]
+
+    repository.append_messages("user-1", "portfolio-1", messages)
+
+    assert repository.list_messages("user-1", "portfolio-1") == messages
+    assert repository.list_messages("user-2", "portfolio-1") == []

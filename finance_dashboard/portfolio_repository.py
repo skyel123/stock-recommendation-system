@@ -34,6 +34,19 @@ class PortfolioRepository(ABC):
     def delete(self, portfolio_id: str) -> None: ...
 
 
+class ConversationRepository(ABC):
+    @abstractmethod
+    def list_messages(self, user_id: str, portfolio_id: str) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    def append_messages(
+        self,
+        user_id: str,
+        portfolio_id: str,
+        messages: list[dict[str, Any]],
+    ) -> None: ...
+
+
 class InMemoryUserRepository(UserRepository):
     def __init__(self) -> None:
         self.users: dict[str, User] = {}
@@ -68,6 +81,23 @@ class InMemoryPortfolioRepository(PortfolioRepository):
         self.portfolios.pop(portfolio_id, None)
 
 
+class InMemoryConversationRepository(ConversationRepository):
+    def __init__(self) -> None:
+        self.conversations: dict[tuple[str, str], list[dict[str, Any]]] = {}
+
+    def list_messages(self, user_id: str, portfolio_id: str) -> list[dict[str, Any]]:
+        return list(self.conversations.get((user_id, portfolio_id), []))
+
+    def append_messages(
+        self,
+        user_id: str,
+        portfolio_id: str,
+        messages: list[dict[str, Any]],
+    ) -> None:
+        key = (user_id, portfolio_id)
+        self.conversations.setdefault(key, []).extend(messages)
+
+
 class MongoRepositories(UserRepository, PortfolioRepository):
     """MongoDB Atlas adapter. Set MONGODB_URI and optionally MONGODB_DATABASE."""
 
@@ -92,8 +122,10 @@ class MongoRepositories(UserRepository, PortfolioRepository):
         db = client[database or "finance_dashboard"]
         self.users = db["users"]
         self.portfolios = db["portfolios"]
+        self.conversations = db["portfolio_conversations"]
         self.users.create_index("email", unique=True)
         self.portfolios.create_index([("user_id", 1), ("name", 1)], unique=True)
+        self.conversations.create_index([("user_id", 1), ("portfolio_id", 1)], unique=True)
 
     def get_by_email(self, email: str) -> User | None:
         document = self.users.find_one({"email": email.lower()})
@@ -127,3 +159,25 @@ class MongoRepositories(UserRepository, PortfolioRepository):
 
     def delete(self, portfolio_id: str) -> None:
         self.portfolios.delete_one({"_id": portfolio_id})
+
+    def list_messages(self, user_id: str, portfolio_id: str) -> list[dict[str, Any]]:
+        document = self.conversations.find_one(
+            {"user_id": user_id, "portfolio_id": portfolio_id},
+            {"messages": 1, "_id": 0},
+        )
+        return list(document.get("messages", [])) if document else []
+
+    def append_messages(
+        self,
+        user_id: str,
+        portfolio_id: str,
+        messages: list[dict[str, Any]],
+    ) -> None:
+        self.conversations.update_one(
+            {"user_id": user_id, "portfolio_id": portfolio_id},
+            {
+                "$setOnInsert": {"user_id": user_id, "portfolio_id": portfolio_id},
+                "$push": {"messages": {"$each": messages}},
+            },
+            upsert=True,
+        )
