@@ -50,8 +50,9 @@ flowchart TD
     D1 -->|Cached yfinance| D4[Use cached_prices]
     D3 --> D5[Metrics.filter_by_date_range]
 
-    E --> E1[Overview page]
-    E --> E2[One page per active metric]
+    E --> E1[Portfolio Management landing page]
+    E1 --> E2[Hidden stock detail page from portfolio ticker]
+    E --> E3[One page per active metric]
     B --> H[Authentication and portfolio management]
 
     E2 --> F[Metrics.calculate]
@@ -66,7 +67,8 @@ flowchart TD
 |---|---|
 | **Reactive orchestration** | Streamlit reruns the script on every widget change. `DashboardController` orchestrates sidebar → cache → compute → render; it is not a synchronous request/response API. |
 | **Session-state caching** | Avoids re-downloading from Yahoo Finance on every slider/date change. |
-| **Multi-page navigation** | `st.navigation` gives one sidebar page per metric plus an Overview page. |
+| **Multi-page navigation** | Portfolio Management is the authenticated landing page; metric pages remain in the sidebar, while stock details are hidden and reached from portfolio ticker buttons. |
+| **Stock direction prediction** | Portfolio ticker buttons open a hidden stock-detail page. A Random Forest prediction fetches five years of adjusted daily prices and runs only on explicit user action. |
 | **MetricRegistry** | Decouples metric metadata (graph type, ticker requirements) from calculation logic. Optional metrics are toggled in the UI. |
 | **Simple watchlist CSV** | CSV uploads are used as a lightweight ticker watchlist import. The app extracts valid symbols from the file rather than parsing historical price data. |
 | **Repository boundary** | MongoDB Atlas persistence is accessed through repository adapters; in-memory adapters support local development and tests when `MONGODB_URI` is absent. |
@@ -114,6 +116,7 @@ Finance Dashboard Srikaran/
 - `finance_dashboard/auth.py` — Signup/login password service
 - `finance_dashboard/analysis.py` — Returns, volatility, clustering, and recommendations
 - `finance_dashboard/portfolio_assistant.py` — Constrained Groq assistant and context serialization
+- `finance_dashboard/stock_prediction.py` — Adjusted-close feature engineering and next-trading-day Random Forest prediction
 
 ## Core entities
 
@@ -154,7 +157,7 @@ Defines `MetricDefinition` (name, graph_type, min_tickers, flags) and `MetricReg
 | `show(data, type_of_graph, title)` | Render line, heatmap, or dual charts (dict → stacked lines) |
 | `show_summary_table(prices)` | Descriptive stats per ticker |
 | `show_raw_data(prices)` | Dataframe display |
-| `show_overview_cards(prices, tickers)` | `st.metric` cards on Overview page |
+| `show_overview_cards(prices, tickers)` | `st.metric` summary cards (legacy helper) |
 
 Graph types: `"line"`, `"heatmap"`.
 
@@ -175,7 +178,7 @@ display_metrics()
 | `accept_user_input()` | Sidebar widgets → `UserInput` |
 | `download_data(list_of_stocks, start, end)` | Fetch and cache prices |
 | `_resolve_prices(user_input)` | Cache-aware price loading + date filter |
-| `_render_overview_page(user_input)` | Overview navigation page |
+| `_render_stock_detail_page(user_input)` | Hidden portfolio-linked page with historical price, return, volatility, and on-demand prediction views |
 | `_render_metric_page(definition, user_input)` | Per-metric page |
 | `display_metrics()` | Entry: sidebar → build `st.navigation` pages → `run()` |
 
@@ -208,6 +211,9 @@ display_metrics()
 | `last_uploaded_file_id` | `str` | Name of the last uploaded CSV file to detect changes |
 | `current_user` | `User` | Signed-in user for the current Streamlit session |
 | `portfolio_analysis_<id>` | `dict` | Computed portfolio analysis snapshot retained across chat reruns |
+| `selected_stock_ticker` | `str` | Ticker selected from a portfolio holding for the hidden stock-detail page |
+| `stock_detail_prices_<ticker>_<start>_<end>` | `DataFrame` | Chart prices cached for the selected stock and sidebar date range |
+| `stock_prediction_<ticker>` | `dict` | Prediction result retained across reruns for the selected stock |
 
 Portfolio holdings are stored as ticker-keyed records with an integer `quantity` and a `purchase_price`. Legacy numeric holding values are read as quantities with a zero purchase price.
 
@@ -223,7 +229,7 @@ Portfolio assistant conversations are keyed by user and portfolio, loaded from `
 
 | Page | Icon | Content |
 |---|---|---|
-| Overview | 📊 | Ticker cards, latest prices, metric list |
+| Stock Details | 📈 | Hidden page reached from a portfolio holding; historical prices, returns, volatility, and on-demand prediction |
 | Rolling Volatility | 📉 | Single-stock rolling vol chart |
 | Stock Comparison | ⚖️ | Normalized / raw / both |
 | Correlation Matrix | 🔥 | Heatmap |
@@ -254,6 +260,7 @@ Portfolio assistant conversations are keyed by user and portfolio, loaded from `
 | `tests/test_metrics.py` | Volatility, comparison modes, correlation, date filter, Sharpe, cumulative returns, registry, CSV loading (watchlist tickers) |
 | `tests/test_portfolio_management.py` | Portfolio CRUD, authentication, portfolio return/volatility analysis, K-Means risk grouping, and empty/small portfolio safeguards |
 | `tests/test_portfolio_management.py` | Also covers assistant context fidelity and in-memory conversation isolation |
+| `tests/test_stock_prediction.py` | Stock feature calculations, close-column validation, direction target, and Random Forest output |
 | `finance_dashboard/ui.py` | Plotly rendering for portfolio risk-group scatter visualization |
 
 **Convention:** Write tests before or alongside new metric logic. Run full suite before finishing.
@@ -269,6 +276,7 @@ Portfolio assistant conversations are keyed by user and portfolio, loaded from `
 - Integration / Streamlit app tests (only unit tests exist today)
 - Production session-token storage and password reset flow
 - Mocked Groq API integration and Streamlit interaction tests
+- Stock direction prediction is a historical-data estimate and has no out-of-sample performance evaluation yet
 
 ---
 
@@ -299,6 +307,7 @@ Portfolio assistant conversations are keyed by user and portfolio, loaded from `
 | 2026-09-16 | Copilot | Changed portfolio analysis to report actual selected-period return and non-annualized volatility |
 | 2026-09-23 | Copilot | Added constrained Groq portfolio assistant in Analyze portfolio, persisted MongoDB conversations with local fallback, and added secrets/dependency configuration and tests |
 | 2026-09-23 | Copilot | Set the configurable Groq model default to `openai/gpt-oss-120b` |
+| 2026-10-07 | Copilot | Added button-triggered Random Forest stock direction prediction with five years of adjusted prices, feature importance, a hidden portfolio-linked stock detail page, and Portfolio Management as the authenticated landing page |
 
 ---
 

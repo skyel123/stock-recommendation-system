@@ -22,6 +22,7 @@ from finance_dashboard.portfolio_repository import (
     MongoRepositories,
 )
 from finance_dashboard.portfolio_service import PortfolioService
+from finance_dashboard.stock_prediction import StockDirectionPredictor
 from finance_dashboard.ui import UI
 
 
@@ -72,6 +73,7 @@ class DashboardController:
         self.conversations = repositories or LOCAL_CONVERSATION_REPOSITORY
         self.assistant = PortfolioAssistant()
         self.analysis = PortfolioAnalysis()
+        self.stock_predictor = StockDirectionPredictor()
         self._ensure_session_state()
 
     def _authenticate(self) -> bool:
@@ -144,8 +146,8 @@ class DashboardController:
                 current_price = None
             col1, col2, col3, col4, col5 = st.columns([2, 1, 1.5, 1.5, 1])
             if col1.button(ticker, key=f"ticker_{portfolio.id}_{ticker}", use_container_width=True):
-                st.session_state["tickers_list"] = [ticker]
-                st.switch_page(self._overview_page)
+                st.session_state["selected_stock_ticker"] = ticker
+                st.switch_page(self._stock_detail_page)
             new_quantity = col2.number_input(
                 "Quantity",
                 min_value=1,
@@ -576,53 +578,93 @@ class DashboardController:
             sorted_prices = prices.sort_index(ascending=user_input.sort_ascending)
             self.ui.show_raw_data(sorted_prices)
 
-    def _render_overview_page(self, user_input: UserInput) -> None:
-        st.title("Overview")
-        st.caption("Snapshot of loaded tickers and quick navigation to detailed metrics.")
-
-        tickers = user_input.tickers or list(st.session_state[SESSION_TICKERS])
+    def _render_stock_detail_page(self, user_input: UserInput) -> None:
+        tickers = [st.session_state.get("selected_stock_ticker", "")]
+        if not tickers[0]:
+            tickers = st.session_state.get("tickers_list", []) or user_input.tickers
         if not tickers:
-            st.info("Enter tickers in the sidebar to begin.")
+            st.info("Open a stock from Portfolio Management to view its details.")
+            return
+        ticker = tickers[0]
+        st.title(f"{ticker} Stock Details")
+
+        if user_input.start_date > user_input.end_date:
+            st.error("Start date must be on or before end date.")
             return
 
-        try:
-            prices = self._resolve_prices(user_input)
-        except ValueError as exc:
-            st.error(str(exc))
-            return
+        prices_key = (
+            f"stock_detail_prices_{ticker}_{user_input.start_date.isoformat()}_"
+            f"{user_input.end_date.isoformat()}"
+        )
+        if user_input.refresh_data or prices_key not in st.session_state:
+            try:
+                detail_prices = self.finance_data.download(
+                    [ticker], start=user_input.start_date, end=user_input.end_date
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+                return
+            st.session_state[prices_key] = detail_prices
+        prices = st.session_state[prices_key]
 
         if prices.empty:
             st.warning("No data in the selected date range.")
             return
 
-        source = st.session_state[SESSION_SOURCE]
-        st.write(f"**Data source:** {source} · **Tickers:** {', '.join(prices.columns)}")
+        if ticker not in prices.columns:
+            st.warning(f"No price data is available for {ticker} in the selected date range.")
+            return
 
-        self.ui.show_overview_cards(prices, list(prices.columns))
-        st.subheader("Price chart")
-        self.ui.show(prices, "line", title="Historical Prices")
+        stock_prices = prices[[ticker]].dropna()
+        self.ui.show(stock_prices, "line", title=f"{ticker} Historical Prices")
+        self.ui.show(
+            stock_prices[ticker].pct_change().dropna().mul(100),
+            "line",
+            title=f"{ticker} Daily Returns (%)",
+        )
+        volatility = self.metrics.calculate_rolling_volatility(stock_prices[ticker], window=20)
+        self.ui.show(volatility.dropna(), "line", title=f"{ticker} 20-Day Volatility (Annualized)")
 
-        with st.expander("Risk groups and recommendations"):
-            method = st.selectbox("Clustering method", ["kmeans", "dbscan"])
-            frequency = st.selectbox("Volatility frequency", ["annualized", "daily", "monthly"])
-            st.dataframe(self.analysis.volatility(prices, frequency), use_container_width=True)
-            if len(prices.columns) >= 2:
-                st.dataframe(self.analysis.risk_groups(prices, method=method), use_container_width=True)
-                target = st.selectbox("Find similar stocks", list(prices.columns))
-                st.dataframe(self.analysis.recommendations(prices, target), use_container_width=True)
+        st.divider()
+        st.subheader("AI stock prediction")
+        st.caption("A Random Forest model estimates whether the next trading-day close will be higher or lower.")
+        st.write(f"**Selected stock:** {ticker}")
+        st.caption("Predictions are based on historical adjusted market data and are not financial advice.")
+        if st.button("Run Prediction", key=f"run_prediction_{ticker}"):
+            with st.spinner("Loading five years of market data and fitting the model..."):
+                try:
+                    history = self.finance_data.download(
+                        [ticker],
+                        start=date.today() - timedelta(days=365 * 5 + 2),
+                        end=date.today() + timedelta(days=1),
+                    )
+                    if ticker not in history.columns:
+                        raise ValueError(f"No adjusted closing-price data is available for {ticker}.")
+                    prediction = self.stock_predictor.predict(
+                        history[[ticker]].rename(columns={ticker: "Close"})
+                    )
+                    st.session_state[f"stock_prediction_{ticker}"] = prediction
+                except ValueError as exc:
+                    st.error(f"Unable to predict {ticker}: {exc}")
 
-        st.subheader("Latest prices")
-        latest = prices.tail(10).sort_index(ascending=False)
-        self.ui.show_raw_data(latest)
+        prediction = st.session_state.get(f"stock_prediction_{ticker}")
+        if prediction:
+            st.write(f"**Stock ticker:** {ticker}")
+            if prediction["prediction"] == 1:
+                st.success("Prediction: ↑ UP")
+            else:
+                st.error("Prediction: ↓ DOWN")
+            st.caption(
+                f"Latest adjusted close: ${prediction['latest_close']:,.2f} · "
+                f"Training observations: {prediction['training_observations']}"
+            )
+            st.write("Feature importance")
+            importance = prediction["feature_importance"].set_index("feature")
+            st.bar_chart(importance["importance"])
 
-        active = self.registry.active_metrics(user_input.enabled_optional_metrics)
-        st.subheader("Available metrics")
-        for metric in active:
-            st.markdown(f"- **{metric.name}** — {metric.description}")
-
-    def _run_overview_page(self) -> None:
+    def _run_stock_detail_page(self) -> None:
         user_input = st.session_state[SESSION_USER_INPUT]
-        self._render_overview_page(user_input)
+        self._render_stock_detail_page(user_input)
 
     def _run_portfolio_page(self) -> None:
         user = st.session_state[SESSION_USER]
@@ -646,19 +688,20 @@ class DashboardController:
         st.session_state[SESSION_USER_INPUT] = user_input
         active_metrics = self.registry.active_metrics(user_input.enabled_optional_metrics)
 
-        self._overview_page = st.Page(
-            self._run_overview_page,
-            title="Overview",
-            icon="📊",
-            default=True,
+        self._stock_detail_page = st.Page(
+            self._run_stock_detail_page,
+            title="Stock Details",
+            icon="📈",
+            visibility="hidden",
         )
-        pages = [self._overview_page]
+        pages = [self._stock_detail_page]
         pages.append(
             st.Page(
                 self._run_portfolio_page,
                 title="Portfolio Management",
                 icon="💼",
                 url_path="portfolio-management",
+                default=True,
             )
         )
 
