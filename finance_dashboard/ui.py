@@ -95,6 +95,36 @@ class UI:
         st.plotly_chart(fig, use_container_width=True)
 
     @staticmethod
+    def show_portfolio_performance(values: pd.Series) -> None:
+        if values.empty:
+            st.info("Historical prices are not available for the current holdings.")
+            return
+        frame = values.rename_axis("Date").reset_index()
+        fig = px.line(frame, x="Date", y="Portfolio Value", title="Portfolio Performance Over Time")
+        fig.update_yaxes(title="Total Portfolio Value ($)", tickprefix="$", separatethousands=True)
+        fig.update_layout(hovermode="x unified")
+        st.plotly_chart(fig, use_container_width=True)
+
+    @staticmethod
+    def show_portfolio_risk_distribution(distribution: pd.DataFrame) -> None:
+        if distribution.empty:
+            st.info("Risk distribution is unavailable for the current holdings.")
+            return
+        colors = {"Low Risk": "#22c55e", "Medium Risk": "#f59e0b", "High Risk": "#ef4444", "Unclassified": "#9ca3af"}
+        fig = px.pie(
+            distribution,
+            names="risk_group",
+            values="investment_value",
+            hole=0.48,
+            title="Portfolio Risk Distribution",
+            color="risk_group",
+            color_discrete_map=colors,
+            custom_data=["percentage"],
+        )
+        fig.update_traces(hovertemplate="%{label}<br>Allocation: %{customdata[0]:.1f}%<br>Invested: $%{value:,.2f}<extra></extra>")
+        st.plotly_chart(fig, use_container_width=True)
+
+    @staticmethod
     def show_summary_table(prices: pd.DataFrame) -> None:
         summary = prices.describe().T[["mean", "std", "min", "max"]]
         summary.columns = ["Mean", "Std Dev", "Min", "Max"]

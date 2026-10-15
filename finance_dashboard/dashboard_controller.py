@@ -110,6 +110,41 @@ class DashboardController:
         st.caption("Create portfolios and manage their holdings.")
         st.markdown("<style>button[kind='primary'] { background: #15803d; border-color: #15803d; }</style>", unsafe_allow_html=True)
         portfolios = self.portfolios.list_portfolios(user_id)
+        held_portfolios = [portfolio for portfolio in portfolios if portfolio.holdings]
+        if held_portfolios:
+            holdings = self.analysis.aggregate_holdings(held_portfolios)
+            ticker_signature = tuple(sorted((ticker, item.quantity, item.purchase_price) for ticker, item in holdings.items()))
+            period = st.radio(
+                "Performance range", ["1M", "3M", "6M", "1Y", "ALL"], horizontal=True,
+                key="portfolio_performance_range",
+            )
+            days = {"1M": 31, "3M": 92, "6M": 183, "1Y": 365, "ALL": 1825}[period]
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days)
+            cache_key = f"portfolio_overview_{hash(ticker_signature)}_{days}"
+            try:
+                prices = st.session_state.get(cache_key)
+                if prices is None:
+                    prices = self.finance_data.download(
+                        list(holdings), start=end_date - timedelta(days=max(days, 365)), end=end_date
+                    )
+                    st.session_state[cache_key] = prices
+                selected_prices = prices.loc[prices.index.date >= start_date]
+                values = self.analysis.performance_series(held_portfolios, selected_prices)
+                if values.empty:
+                    st.info("Portfolio performance is unavailable because no holdings have valid historical prices.")
+                else:
+                    st.caption("Historical valuation of current share quantities; transaction dates are not stored.")
+                    self.ui.show_portfolio_performance(values)
+                distribution, unclassified = self.analysis.risk_distribution(holdings, prices)
+                self.ui.show_portfolio_risk_distribution(distribution)
+                if unclassified:
+                    st.caption(f"Unclassified investment value (missing data or fewer than four valid stocks): ${unclassified:,.2f}")
+                if distribution.empty or (distribution["risk_group"] == "Unclassified").all():
+                    st.info("Risk classification requires at least four valid stocks with market data.")
+            except Exception as exc:
+                st.warning(f"Portfolio overview charts are temporarily unavailable: {exc}")
+            st.divider()
         if st.button("+ Create new portfolio", type="primary", key="create_portfolio_button"):
             st.session_state["creating_portfolio"] = True
         if st.session_state.get("creating_portfolio"):
@@ -398,6 +433,7 @@ class DashboardController:
         if "tickers_list" not in st.session_state:
             st.session_state["tickers_list"] = default_tickers or DEFAULT_TICKERS
 
+        previous_input = st.session_state.get(SESSION_USER_INPUT)
         with st.expander("⚙️ Dashboard Settings & Data Upload", expanded=True):
             col1, col2, col3 = st.columns([1.2, 1.0, 1.0])
             
@@ -425,15 +461,31 @@ class DashboardController:
                 st.subheader("Timeframe")
                 default_end = date.today()
                 default_start = default_end - timedelta(days=30)
-                start_date = st.date_input("Start date", value=default_start)
-                end_date = st.date_input("End date", value=default_end)
-                window = st.slider("Rolling window (days)", min_value=5, max_value=90, value=21)
+                start_date = st.date_input(
+                    "Start date",
+                    value=previous_input.start_date if previous_input else default_start,
+                )
+                end_date = st.date_input(
+                    "End date",
+                    value=previous_input.end_date if previous_input else default_end,
+                )
+                window = st.slider(
+                    "Rolling window (days)",
+                    min_value=5,
+                    max_value=90,
+                    value=previous_input.window if previous_input else 21,
+                )
 
             with col3:
                 st.subheader("Preferences & Actions")
                 comparison_mode = st.radio(
                     "Comparison display",
                     options=["normalized", "raw", "both"],
+                    index=(
+                        ["normalized", "raw", "both"].index(previous_input.comparison_mode)
+                        if previous_input
+                        else 0
+                    ),
                     format_func=lambda value: {
                         "normalized": "Normalized (base 100)",
                         "raw": "Raw prices",
@@ -441,7 +493,11 @@ class DashboardController:
                     }[value],
                 )
                 sort_ascending = (
-                    st.radio("Sort raw data by date", ["Oldest first", "Newest first"])
+                    st.radio(
+                        "Sort raw data by date",
+                        ["Oldest first", "Newest first"],
+                        index=0 if not previous_input or previous_input.sort_ascending else 1,
+                    )
                     == "Oldest first"
                 )
                 refresh_data = st.button("Refresh market data", use_container_width=True)
@@ -684,9 +740,8 @@ class DashboardController:
     def display_metrics(self) -> None:
         if not self._authenticate():
             return
-        user_input = self.accept_user_input()
-        st.session_state[SESSION_USER_INPUT] = user_input
-        active_metrics = self.registry.active_metrics(user_input.enabled_optional_metrics)
+        enabled_optional_metrics = st.session_state.get("enabled_optional_metrics", [])
+        active_metrics = self.registry.active_metrics(enabled_optional_metrics)
 
         self._stock_detail_page = st.Page(
             self._run_stock_detail_page,
@@ -725,4 +780,19 @@ class DashboardController:
             )
 
         navigation = st.navigation(pages, position="sidebar")
+        if navigation.title == "Portfolio Management":
+            user_input = st.session_state.get(SESSION_USER_INPUT)
+            if user_input is None:
+                today = date.today()
+                user_input = UserInput(
+                    tickers=st.session_state.get("tickers_list", DEFAULT_TICKERS),
+                    start_date=today - timedelta(days=30),
+                    end_date=today,
+                    window=21,
+                    comparison_mode="normalized",
+                    enabled_optional_metrics=enabled_optional_metrics,
+                )
+        else:
+            user_input = self.accept_user_input()
+        st.session_state[SESSION_USER_INPUT] = user_input
         navigation.run()

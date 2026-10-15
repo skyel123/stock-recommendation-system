@@ -149,6 +149,42 @@ def test_portfolio_analysis_rejects_invalid_window() -> None:
         PortfolioAnalysis().analyze_portfolio(pd.DataFrame(), window=1)
 
 
+def test_overview_aggregates_duplicate_holdings_and_values_current_shares() -> None:
+    first = Portfolio.new("user-1", "First")
+    second = Portfolio.new("user-1", "Second")
+    first.holdings = {"AAPL": Holding(2, 100.0)}
+    second.holdings = {"AAPL": Holding(3, 200.0), "MSFT": Holding(1, 50.0)}
+    analysis = PortfolioAnalysis()
+    combined = analysis.aggregate_holdings([first, second])
+    assert combined["AAPL"].quantity == 5
+    assert combined["AAPL"].purchase_price == pytest.approx(160.0)
+    prices = pd.DataFrame(
+        {"AAPL": [10.0, 12.0], "MSFT": [20.0, 25.0]},
+        index=pd.date_range("2024-01-01", periods=2),
+    )
+    assert analysis.performance_series([first, second], prices).tolist() == [70.0, 85.0]
+
+
+def test_risk_distribution_keeps_unclassifiable_investment_visible() -> None:
+    portfolio = Portfolio.new("user-1", "Holdings")
+    portfolio.holdings = {"A": Holding(2, 10), "B": Holding(1, 20)}
+    distribution, unclassified = PortfolioAnalysis().risk_distribution(
+        PortfolioAnalysis.aggregate_holdings([portfolio]), pd.DataFrame()
+    )
+    assert unclassified == 40
+    assert distribution.to_dict("records") == [
+        {"risk_group": "Unclassified", "investment_value": 40.0, "percentage": 0.0}
+    ]
+
+
+def test_risk_distribution_sanitizes_missing_purchase_prices_for_chart_hover() -> None:
+    holdings = {"AAPL": Holding(2, float("nan")), "MSFT": Holding(1, 0.0)}
+    distribution, unclassified = PortfolioAnalysis().risk_distribution(holdings, pd.DataFrame())
+    assert distribution["percentage"].notna().all()
+    assert distribution["investment_value"].notna().all()
+    assert unclassified == 0.0
+
+
 def test_portfolio_assistant_context_uses_existing_values_only() -> None:
     portfolio = Portfolio.new("user-1", "Retirement")
     portfolio.holdings = {"AAPL": Holding(2, 100.0)}
