@@ -68,6 +68,7 @@ flowchart TD
 | **Reactive orchestration** | Streamlit reruns the script on every widget change. `DashboardController` orchestrates sidebar → cache → compute → render; it is not a synchronous request/response API. |
 | **Session-state caching** | Avoids re-downloading from Yahoo Finance on every slider/date change. |
 | **Multi-page navigation** | Portfolio Management is the authenticated landing page; metric pages remain in the sidebar, while stock details are hidden and reached from portfolio ticker buttons. The dashboard settings expander is shown on metric pages, not on Portfolio Management. |
+| **Multi Stock Analysis navigation** | Stock Comparison and Correlation Matrix render together on one sidebar page using the same resolved price data. Rolling Volatility and Rolling Correlation remain implemented in the registry/calculator but are not exposed as sidebar pages. |
 | **Stock direction prediction** | Portfolio ticker buttons open a hidden stock-detail page. A Random Forest prediction fetches five years of adjusted daily prices and runs only on explicit user action. |
 | **MetricRegistry** | Decouples metric metadata (graph type, ticker requirements) from calculation logic. Optional metrics are toggled in the UI. |
 | **Simple watchlist CSV** | CSV uploads are used as a lightweight ticker watchlist import. The app extracts valid symbols from the file rather than parsing historical price data. |
@@ -147,7 +148,7 @@ Returns a `pd.DataFrame` indexed by date, one column per ticker.
 
 Defines `MetricDefinition` (name, graph_type, min_tickers, flags) and `MetricRegistry`:
 
-- **Default metrics** (always active): Rolling Volatility, Stock Comparison, Correlation Matrix, Rolling Correlation
+- **Default metrics** (always active in the registry): Rolling Volatility, Stock Comparison, Correlation Matrix, Rolling Correlation. Navigation exposes Stock Comparison and Correlation Matrix together as Multi Stock Analysis; both rolling metrics remain implemented but hidden from the sidebar.
 - **Optional metrics** (user enables in sidebar): Sharpe Ratio, Cumulative Returns
 - `register(definition, calculator)` — extend with custom metrics (calculator hook reserved; dispatch currently lives in `Metrics.calculate`)
 
@@ -236,10 +237,7 @@ Portfolio assistant conversations are keyed by user and portfolio, loaded from `
 | Page | Icon | Content |
 |---|---|---|
 | Stock Details | 📈 | Hidden page reached from a portfolio holding; historical prices, returns, volatility, and on-demand prediction |
-| Rolling Volatility | 📉 | Single-stock rolling vol chart |
-| Stock Comparison | ⚖️ | Normalized / raw / both |
-| Correlation Matrix | 🔥 | Heatmap |
-| Rolling Correlation | 🔗 | Pairwise rolling correlation |
+| Multi Stock Analysis | 📊 | Stock comparison (normalized / raw / both) and correlation matrix |
 | Sharpe Ratio | 📐 | Optional — enable in sidebar |
 | Cumulative Returns | 📈 | Optional — enable in sidebar |
 | Portfolio Management | 💼 | Dedicated page for creating portfolios and editing, adding, or removing holdings |
@@ -318,6 +316,7 @@ Portfolio assistant conversations are keyed by user and portfolio, loaded from `
 | 2026-10-14 | Copilot | Hid the Dashboard Settings & Data Upload expander on Portfolio Management while retaining settings on metric pages |
 | 2026-10-14 | Codex | Added cached multi-portfolio historical valuation and purchase-cost risk distribution charts with existing K-Means labels and aggregation tests |
 | 2026-10-14 | Codex | Sanitized missing and non-finite purchase prices so risk chart hover allocations remain numeric |
+| 2026-10-21 | Codex | Combined Stock Comparison and Correlation Matrix in Multi Stock Analysis; hid Rolling Volatility and Rolling Correlation sidebar pages while retaining their implementations |
 
 ---
 

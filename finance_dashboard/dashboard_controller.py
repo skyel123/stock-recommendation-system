@@ -737,11 +737,55 @@ class DashboardController:
         run_metric_page.__qualname__ = run_metric_page.__name__
         return run_metric_page
 
+    def _run_multi_stock_analysis_page(self) -> None:
+        user_input = st.session_state[SESSION_USER_INPUT]
+        tickers = user_input.tickers or list(st.session_state[SESSION_TICKERS])
+        st.title("Multi Stock Analysis")
+
+        try:
+            prices = self._resolve_prices(user_input)
+        except ValueError as exc:
+            st.error(str(exc))
+            return
+        if prices.empty:
+            st.warning("No data in the selected date range.")
+            return
+
+        comparison = self.registry.get_definition("Stock Comparison")
+        st.subheader("Stock Comparison")
+        st.caption(comparison.description)
+        if not tickers:
+            st.warning("Select at least one ticker to compare stocks.")
+        else:
+            result = self.metrics.calculate(
+                "Stock Comparison", prices, comparison_mode=user_input.comparison_mode
+            )
+            self.ui.show(result, comparison.graph_type, title="Stock Comparison")
+
+        st.subheader("Correlation Matrix")
+        correlation = self.registry.get_definition("Correlation Matrix")
+        st.caption(correlation.description)
+        if len(tickers) < correlation.min_tickers:
+            st.warning(f"Correlation Matrix requires at least {correlation.min_tickers} tickers.")
+        else:
+            result = self.metrics.calculate("Correlation Matrix", prices)
+            self.ui.show(result, correlation.graph_type, title="Correlation Matrix")
+
+        with st.expander("Summary statistics"):
+            self.ui.show_summary_table(prices)
+        with st.expander("Raw price data"):
+            sorted_prices = prices.sort_index(ascending=user_input.sort_ascending)
+            self.ui.show_raw_data(sorted_prices)
+
     def display_metrics(self) -> None:
         if not self._authenticate():
             return
         enabled_optional_metrics = st.session_state.get("enabled_optional_metrics", [])
-        active_metrics = self.registry.active_metrics(enabled_optional_metrics)
+        active_metrics = [
+            definition
+            for definition in self.registry.active_metrics(enabled_optional_metrics)
+            if definition.name not in {"Rolling Volatility", "Stock Comparison", "Correlation Matrix", "Rolling Correlation"}
+        ]
 
         self._stock_detail_page = st.Page(
             self._run_stock_detail_page,
@@ -760,11 +804,16 @@ class DashboardController:
             )
         )
 
+        pages.append(
+            st.Page(
+                self._run_multi_stock_analysis_page,
+                title="Multi Stock Analysis",
+                icon="📊",
+                url_path="multi-stock-analysis",
+            )
+        )
+
         icons = {
-            "Rolling Volatility": "📉",
-            "Stock Comparison": "⚖️",
-            "Correlation Matrix": "🔥",
-            "Rolling Correlation": "🔗",
             "Sharpe Ratio": "📐",
             "Cumulative Returns": "📈",
         }
