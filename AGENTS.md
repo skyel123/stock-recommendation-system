@@ -26,7 +26,7 @@ streamlit run app.py
 .\.venv\Scripts\python.exe -m pytest tests/ -v
 ```
 
-**Last reviewed:** 2026-10-14 — documentation aligned with page-specific dashboard settings and portfolio navigation
+**Last reviewed:** 2026-10-23 — public README rewritten from the implemented modules; screenshot files are still pending
 
 ---
 
@@ -96,6 +96,8 @@ flowchart TD
 Finance Dashboard Srikaran/
 ├── app.py                              # Streamlit entry point
 ├── requirements.txt                    # Python dependencies
+├── README.md                           # Public GitHub / portfolio README
+├── docs/screenshots/                   # Screenshot capture guide for README images
 ├── AGENTS.md                           # This file — keep updated
 ├── finance_dashboard/
 │   ├── __init__.py
@@ -323,6 +325,7 @@ Portfolio assistant conversations are keyed by user and portfolio, loaded from `
 | 2026-10-21 | Codex | Combined Stock Comparison and Correlation Matrix in Multi Stock Analysis; hid Rolling Volatility and Rolling Correlation sidebar pages while retaining their implementations |
 | 2026-10-21 | Copilot | Displayed a warning when MongoDB initialization fails and portfolio data falls back to temporary in-memory storage |
 | 2026-10-23 | Agent | Pinged Atlas on repository init, cached persistence for the Streamlit session, and surfaced authentication failures in the MongoDB fallback warning |
+| 2026-10-23 | Agent | Replaced the setup stub README with a portfolio-oriented GitHub README and screenshot capture instructions |
 
 ---
 
