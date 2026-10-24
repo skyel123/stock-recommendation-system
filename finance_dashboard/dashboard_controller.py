@@ -20,6 +20,7 @@ from finance_dashboard.portfolio_repository import (
     InMemoryPortfolioRepository,
     InMemoryUserRepository,
     MongoRepositories,
+    persistence_warning_message,
 )
 from finance_dashboard.portfolio_service import PortfolioService
 from finance_dashboard.stock_prediction import StockDirectionPredictor
@@ -32,6 +33,8 @@ SESSION_TICKERS = "cached_tickers"
 SESSION_SOURCE = "data_source"
 SESSION_USER_INPUT = "current_user_input"
 SESSION_USER = "current_user"
+SESSION_REPOSITORIES = "persistence_repositories"
+SESSION_PERSISTENCE_WARNING = "persistence_warning"
 LOCAL_USER_REPOSITORY = InMemoryUserRepository()
 LOCAL_PORTFOLIO_REPOSITORY = InMemoryPortfolioRepository()
 LOCAL_CONVERSATION_REPOSITORY = InMemoryConversationRepository()
@@ -64,17 +67,14 @@ class DashboardController:
         self.metrics = Metrics()
         self.ui = UI()
         self.registry = MetricRegistry()
-        try:
-            repositories = MongoRepositories()
-        except Exception:
-            repositories = None
+        self._ensure_session_state()
+        repositories = self._load_repositories()
         self.auth = AuthService(repositories or LOCAL_USER_REPOSITORY)
         self.portfolios = PortfolioService(repositories or LOCAL_PORTFOLIO_REPOSITORY)
         self.conversations = repositories or LOCAL_CONVERSATION_REPOSITORY
         self.assistant = PortfolioAssistant()
         self.analysis = PortfolioAnalysis()
         self.stock_predictor = StockDirectionPredictor()
-        self._ensure_session_state()
 
     def _authenticate(self) -> bool:
         if SESSION_USER in st.session_state:
@@ -421,6 +421,21 @@ class DashboardController:
         percent = ((current_price / holding.purchase_price) - 1) * 100
         return f"{percent:+.2f}%"
 
+    def _load_repositories(self):
+        if SESSION_PERSISTENCE_WARNING in st.session_state:
+            self._persistence_warning = st.session_state[SESSION_PERSISTENCE_WARNING]
+            return st.session_state.get(SESSION_REPOSITORIES)
+        try:
+            repositories = MongoRepositories()
+            warning = None
+        except Exception as exc:
+            repositories = None
+            warning = persistence_warning_message(exc)
+        st.session_state[SESSION_REPOSITORIES] = repositories
+        st.session_state[SESSION_PERSISTENCE_WARNING] = warning
+        self._persistence_warning = warning
+        return repositories
+
     def _ensure_session_state(self) -> None:
         if SESSION_PRICES not in st.session_state:
             st.session_state[SESSION_PRICES] = pd.DataFrame()
@@ -428,6 +443,7 @@ class DashboardController:
             st.session_state[SESSION_TICKERS] = []
         if SESSION_SOURCE not in st.session_state:
             st.session_state[SESSION_SOURCE] = "none"
+        self._persistence_warning = st.session_state.get(SESSION_PERSISTENCE_WARNING)
 
     def accept_user_input(self, default_tickers: list[str] | None = None) -> UserInput:
         if "tickers_list" not in st.session_state:
@@ -778,6 +794,8 @@ class DashboardController:
             self.ui.show_raw_data(sorted_prices)
 
     def display_metrics(self) -> None:
+        if self._persistence_warning:
+            st.warning(self._persistence_warning)
         if not self._authenticate():
             return
         enabled_optional_metrics = st.session_state.get("enabled_optional_metrics", [])

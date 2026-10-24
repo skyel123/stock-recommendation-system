@@ -98,6 +98,37 @@ class InMemoryConversationRepository(ConversationRepository):
         self.conversations.setdefault(key, []).extend(messages)
 
 
+def _streamlit_secret(name: str) -> str | None:
+    try:
+        import streamlit as st
+
+        value = st.secrets.get(name)
+    except Exception:
+        return None
+    if value is None:
+        return None
+    return str(value)
+
+
+def load_mongo_settings(
+    uri: str | None = None,
+    database: str | None = None,
+) -> tuple[str | None, str | None]:
+    uri = uri or os.getenv("MONGODB_URI") or _streamlit_secret("MONGODB_URI")
+    database = database or os.getenv("MONGODB_DATABASE") or _streamlit_secret("MONGODB_DATABASE")
+    return uri, database
+
+
+def persistence_warning_message(exc: BaseException) -> str:
+    detail = str(exc).split(", full error:")[0].strip() or type(exc).__name__
+    return (
+        f"MongoDB is unavailable ({detail}). This session is using temporary "
+        "in-memory storage. Accounts, portfolios, and assistant conversations "
+        "will not be saved until MONGODB_URI in the environment or "
+        ".streamlit/secrets.toml authenticates with Atlas."
+    )
+
+
 class MongoRepositories(UserRepository, PortfolioRepository):
     """MongoDB Atlas adapter. Set MONGODB_URI and optionally MONGODB_DATABASE."""
 
@@ -106,19 +137,17 @@ class MongoRepositories(UserRepository, PortfolioRepository):
             from pymongo import MongoClient
         except ImportError as exc:
             raise RuntimeError("Install pymongo to use MongoDB persistence.") from exc
-        uri = uri or os.getenv("MONGODB_URI")
-        database = database or os.getenv("MONGODB_DATABASE")
-        if not uri:
-            try:
-                import streamlit as st
-
-                uri = st.secrets.get("MONGODB_URI")
-                database = database or st.secrets.get("MONGODB_DATABASE")
-            except (ImportError, FileNotFoundError):
-                pass
+        uri, database = load_mongo_settings(uri, database)
         if not uri:
             raise ValueError("MONGODB_URI is required for MongoDB persistence.")
         client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+        try:
+            client.admin.command("ping")
+        except Exception as exc:
+            raise RuntimeError(
+                "MongoDB authentication or connection failed. "
+                "Update the Atlas database user password in MONGODB_URI."
+            ) from exc
         db = client[database or "finance_dashboard"]
         self.users = db["users"]
         self.portfolios = db["portfolios"]

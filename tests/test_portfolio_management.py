@@ -6,7 +6,12 @@ import numpy as np
 
 from finance_dashboard.analysis import PortfolioAnalysis
 from finance_dashboard.auth import AuthService
-from finance_dashboard.portfolio_repository import InMemoryPortfolioRepository
+from finance_dashboard.portfolio_repository import (
+    InMemoryPortfolioRepository,
+    MongoRepositories,
+    load_mongo_settings,
+    persistence_warning_message,
+)
 from finance_dashboard.portfolio_assistant import PortfolioAssistant
 from finance_dashboard.portfolio_repository import InMemoryConversationRepository
 from finance_dashboard.models import Holding, Portfolio
@@ -216,3 +221,36 @@ def test_conversation_repository_round_trips_messages() -> None:
 
     assert repository.list_messages("user-1", "portfolio-1") == messages
     assert repository.list_messages("user-2", "portfolio-1") == []
+
+
+def test_mongo_settings_prefer_environment_over_streamlit_secrets(monkeypatch) -> None:
+    monkeypatch.setenv("MONGODB_URI", "mongodb://localhost:27017")
+    monkeypatch.setenv("MONGODB_DATABASE", "testdb")
+    monkeypatch.setattr(
+        "finance_dashboard.portfolio_repository._streamlit_secret",
+        lambda name: "should-not-be-used",
+    )
+
+    uri, database = load_mongo_settings()
+
+    assert uri == "mongodb://localhost:27017"
+    assert database == "testdb"
+
+
+def test_mongo_repositories_require_uri_without_contacting_atlas(monkeypatch) -> None:
+    monkeypatch.delenv("MONGODB_URI", raising=False)
+    monkeypatch.delenv("MONGODB_DATABASE", raising=False)
+    monkeypatch.setattr("finance_dashboard.portfolio_repository._streamlit_secret", lambda name: None)
+
+    with pytest.raises(ValueError, match="MONGODB_URI"):
+        MongoRepositories()
+
+
+def test_persistence_warning_includes_authentication_failure() -> None:
+    warning = persistence_warning_message(
+        RuntimeError("MongoDB authentication or connection failed. Update the Atlas database user password in MONGODB_URI.")
+    )
+
+    assert "authentication or connection failed" in warning
+    assert ".streamlit/secrets.toml" in warning
+    assert "in-memory storage" in warning

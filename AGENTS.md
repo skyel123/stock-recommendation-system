@@ -72,7 +72,7 @@ flowchart TD
 | **Stock direction prediction** | Portfolio ticker buttons open a hidden stock-detail page. A Random Forest prediction fetches five years of adjusted daily prices and runs only on explicit user action. |
 | **MetricRegistry** | Decouples metric metadata (graph type, ticker requirements) from calculation logic. Optional metrics are toggled in the UI. |
 | **Simple watchlist CSV** | CSV uploads are used as a lightweight ticker watchlist import. The app extracts valid symbols from the file rather than parsing historical price data. |
-| **Repository boundary** | MongoDB Atlas persistence is accessed through repository adapters; in-memory adapters support local development and tests when `MONGODB_URI` is absent. |
+| **Repository boundary** | MongoDB Atlas persistence is accessed through repository adapters. Connection settings come from `MONGODB_URI` / `MONGODB_DATABASE` in the environment or `.streamlit/secrets.toml`. The client pings Atlas before creating indexes; failed authentication or connection falls back to in-memory adapters for the Streamlit session and shows the Atlas error in a warning. |
 | **Application authentication** | Users authenticate by email and scrypt-hashed password in main-page tabs; the signed-in user is held in Streamlit session state. |
 | **Portfolio navigation** | Portfolio management is a dedicated navigation page; creation uses an explicit green action button rather than a selection option. Holding rows validate tickers, record whole-share quantities and purchase prices, show current profit/loss, and link back to the dashboard ticker view. |
 | **Portfolio analysis** | The Analyze this portfolio expander reloads the selected portfolio, accepts a user-selected start/end date and volatility window, downloads that range, and delegates feature calculation, scaling, K-Means, and risk naming to `PortfolioAnalysis`. Clustering is skipped for 1–3 assets, uses up to 2 clusters for 4–5 assets, and up to 3 clusters for 6+ assets. Clustered portfolios are visualized as a return-versus-volatility scatter plot colored by risk group. |
@@ -85,6 +85,7 @@ flowchart TD
 - Stock comparison supports **normalized** (base 100), **raw prices**, or **both**.
 - No API keys required (yfinance is free).
 - Groq uses `GROQ_API_KEY` from `.streamlit/secrets.toml` or the environment. The model defaults in code, with an optional `GROQ_MODEL` environment-variable override; it is explanatory only and does not calculate financial values.
+- Persistent accounts and portfolios require a working Atlas URI. A rejected database-user password produces an in-memory fallback until `MONGODB_URI` is updated.
 - PowerShell venv activation may require `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`.
 
 ---
@@ -169,7 +170,7 @@ Original spec mapping:
 
 ```
 display_metrics()
-  1. authenticate and select the current navigation page
+  1. display any MongoDB fallback warning, authenticate, and select the current navigation page
   2. accept_user_input()   → only on metric pages
   3. resolve prices        → cache or FinanceData.download
   4. calculate and render  → Metrics.calculate via _render_metric_page, then UI.show
@@ -178,11 +179,12 @@ display_metrics()
 | Method | Purpose |
 |---|---|
 | `accept_user_input()` | Sidebar widgets → `UserInput` |
+| `_load_repositories()` | Session-cached MongoDB init, or in-memory fallback with a persistence warning |
 | `download_data(list_of_stocks, start, end)` | Fetch and cache prices |
 | `_resolve_prices(user_input)` | Cache-aware price loading + date filter |
 | `_render_stock_detail_page(user_input)` | Hidden portfolio-linked page with historical price, return, volatility, and on-demand prediction views |
 | `_render_metric_page(definition, user_input)` | Per-metric page |
-| `display_metrics()` | Entry: sidebar → build `st.navigation` pages → `run()` |
+| `display_metrics()` | Entry: show MongoDB fallback status → sidebar → build `st.navigation` pages → `run()` |
 
 ### `UserInput` dataclass
 
@@ -204,6 +206,8 @@ display_metrics()
 
 | Key | Type | Purpose |
 |---|---|---|
+| `persistence_repositories` | `MongoRepositories \| None` | Cached Atlas adapter for the Streamlit session so failed or successful init is not retried on every rerun |
+| `persistence_warning` | `str \| None` | MongoDB fallback warning retained across reruns |
 | `cached_prices` | `pd.DataFrame` | Downloaded price data |
 | `cached_tickers` | `list[str]` | Tickers in cache |
 | `data_source` | `str` | `"none"` \| `"yfinance"` |
@@ -264,7 +268,7 @@ Portfolio assistant conversations are keyed by user and portfolio, loaded from `
 | `tests/test_metrics.py` | Volatility, comparison modes, correlation, date filter, Sharpe, cumulative returns, registry, CSV loading (watchlist tickers) |
 | `tests/test_portfolio_management.py` | Portfolio CRUD, authentication, portfolio return/volatility analysis, K-Means risk grouping, and empty/small portfolio safeguards |
 | `tests/test_portfolio_management.py` | Also covers assistant context fidelity and in-memory conversation isolation |
-| `tests/test_portfolio_management.py` | Also covers cross-portfolio duplicate aggregation, historical valuation, unclassified risk investment, and finite allocation percentages for missing purchase prices |
+| `tests/test_portfolio_management.py` | Also covers MongoDB setting resolution, missing-URI safeguards, and fallback warning text |
 | `tests/test_stock_prediction.py` | Stock feature calculations, close-column validation, direction target, and Random Forest output |
 | `finance_dashboard/ui.py` | Plotly rendering for portfolio risk-group scatter visualization |
 
@@ -317,6 +321,8 @@ Portfolio assistant conversations are keyed by user and portfolio, loaded from `
 | 2026-10-14 | Codex | Added cached multi-portfolio historical valuation and purchase-cost risk distribution charts with existing K-Means labels and aggregation tests |
 | 2026-10-14 | Codex | Sanitized missing and non-finite purchase prices so risk chart hover allocations remain numeric |
 | 2026-10-21 | Codex | Combined Stock Comparison and Correlation Matrix in Multi Stock Analysis; hid Rolling Volatility and Rolling Correlation sidebar pages while retaining their implementations |
+| 2026-10-21 | Copilot | Displayed a warning when MongoDB initialization fails and portfolio data falls back to temporary in-memory storage |
+| 2026-10-23 | Agent | Pinged Atlas on repository init, cached persistence for the Streamlit session, and surfaced authentication failures in the MongoDB fallback warning |
 
 ---
 
