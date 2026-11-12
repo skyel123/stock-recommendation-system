@@ -22,4 +22,4 @@ Suggested capture steps:
 4. Use the browser or OS screenshot tool at a desktop width (the app uses Streamlit’s wide layout).
 5. Crop to the application window. Avoid including OS taskbars, API keys, or email addresses you do not want public.
 6. Save PNG files in this directory using the names in the table.
-7. Uncomment the matching image references in the root `README.md`.
+7. The root `README.md` already references these screenshot filenames. Add the PNGs to version control alongside the README so they render on GitHub.

@@ -4,7 +4,7 @@ An interactive financial analytics application that helps users explore stock ma
 
 The project combines market-data retrieval, statistical metrics, unsupervised clustering, a Random Forest classifier, and a constrained language-model assistant. It is an educational Computer Science portfolio project, not a trading product.
 
-<!-- Optional: add a one-sentence personal motivation here. -->
+I built this project to make stock and portfolio analysis easier to explore in one place, while learning how to connect market data, financial calculations, machine learning, and a web interface.
 
 ---
 
@@ -14,36 +14,42 @@ A public deployment URL is not configured in this repository.
 
 To run the application locally, see [Installation and Local Setup](#installation-and-local-setup).
 
-<!-- If you publish a demo, replace this section with:
-## Live Demo
-[Launch the Application](YOUR_DEPLOYMENT_URL)
--->
 
 ---
 
 ## Application Preview
 
-Screenshots of the live UI are not in the repository yet. Capture them from a running `streamlit run app.py` session and save them under [`docs/screenshots/`](docs/screenshots/README.md). After the files exist, uncomment the blocks below.
+The following screenshots show the application running locally. Prices and portfolio values are point-in-time captures that change with market data; they are not current quotes or investment recommendations.
 
-<!--
+### Sign in
+![Login screen](docs/screenshots/login.png)
+Create an account or sign in to access portfolios.
+
 ### Portfolio Management
 ![Portfolio Management](docs/screenshots/portfolio-management.png)
-Holdings, purchase prices, live profit/loss, and portfolio overview charts.
+Review holdings, purchase prices, and current profit/loss.
 
 ### Portfolio Analysis
 ![Portfolio Analysis](docs/screenshots/portfolio-analysis.png)
-Period return, rolling volatility, and K-Means risk groups.
-
-### Stock Direction Prediction
-![Stock Direction Prediction](docs/screenshots/stock-prediction.png)
-Random Forest next-day UP/DOWN estimate and feature importance.
+Explore historical prices, period returns, and volatility.
 
 ### Portfolio Assistant
 ![Portfolio Assistant](docs/screenshots/portfolio-assistant.png)
-Groq chat grounded in the application's calculated analysis snapshot.
--->
+Ask questions about the supplied portfolio analysis.
 
-Until those files are added, the fastest way to preview the app is to follow the setup steps and open:
+### Stock Details
+![Stock Details](docs/screenshots/stock-details.png)
+Inspect a selected ticker's historical price and return information.
+
+### Stock Direction Prediction
+![Stock Direction Prediction](docs/screenshots/stock-prediction.png)
+View the on-demand Random Forest estimate and feature importance.
+
+### Multi Stock Analysis
+![Multi Stock Analysis](docs/screenshots/multi-stock-analysis.png)
+Compare selected stocks and inspect their return correlation matrix.
+
+To preview the app locally, follow the setup steps below, then open:
 
 | View | How to reach it |
 |---|---|
@@ -69,7 +75,6 @@ This project puts those pieces in one application so a user can:
 
 The technical motivation is to practice building a full path from external data, through calculations and models, to a persisted user interface.
 
-<!-- Student: add a short personal “why I built this” paragraph here if you want it in applications. -->
 
 ---
 
@@ -280,7 +285,9 @@ The items below are taken from the repository (error handling, tests, and module
 **Solution.** `AuthService` never stores the raw password.  
 **Learned.** Authentication is a hashing and validation problem before it is a UI problem.
 
-<!-- Student: add one or two short stories about a bug you actually fixed (for example MongoDB auth, Streamlit page routing, or yfinance column shapes). -->
+### Debugging example: MongoDB persistence
+
+During development, an Atlas authentication or connection failure could prevent the app from loading saved portfolios. I added a connection ping during repository initialization, cached the result for the Streamlit session, and kept the app usable with in-memory repositories when Atlas is unavailable. The UI now warns when data is temporary, which makes the persistence limitation visible instead of silently implying that changes were saved.
 
 ---
 
@@ -406,7 +413,7 @@ These are **not** implemented:
 
 ## What I Learned
 
-This section is written so a reviewer can map the repo to Computer Science topics. Customize the first-person sentences before using this README in an application.
+This project provided hands-on practice with the following Computer Science concepts:
 
 The project demonstrates:
 
@@ -448,16 +455,3 @@ Example of a specific statement you can keep or edit:
 No additional collaborators, awards, or institutional affiliations are recorded in this repository.
 
 Libraries and services used: [Streamlit](https://streamlit.io/), [pandas](https://pandas.pydata.org/), [NumPy](https://numpy.org/), [Plotly](https://plotly.com/), [yfinance](https://github.com/ranaroussi/yfinance), [scikit-learn](https://scikit-learn.org/), [pymongo](https://www.mongodb.com/docs/drivers/pymongo/), [MongoDB Atlas](https://www.mongodb.com/atlas), [Groq](https://groq.com/), and [pytest](https://pytest.org/). Market data belongs to its providers and is used here for education.
-
----
-
-## Student input checklist
-
-Fill these before treating the README as application-ready:
-
-1. Your name, and optional website or email.
-2. A short personal motivation (Section 1 or 4).
-3. Screenshots in `docs/screenshots/` and uncommented image tags.
-4. Live demo URL, only if you actually deploy the app.
-5. One or two first-person debugging stories you personally remember.
-6. Confirm the GitHub username and clone URL if the remote ever changes.

@@ -26,7 +26,7 @@ streamlit run app.py
 .\.venv\Scripts\python.exe -m pytest tests/ -v
 ```
 
-**Last reviewed:** 2026-10-23 — public README rewritten from the implemented modules; screenshot files are still pending
+**Last reviewed:** 2026-11-11 — completed the public README with application screenshots, project motivation, and a MongoDB persistence debugging example
 
 ---
 
@@ -326,6 +326,7 @@ Portfolio assistant conversations are keyed by user and portfolio, loaded from `
 | 2026-10-21 | Copilot | Displayed a warning when MongoDB initialization fails and portfolio data falls back to temporary in-memory storage |
 | 2026-10-23 | Agent | Pinged Atlas on repository init, cached persistence for the Streamlit session, and surfaced authentication failures in the MongoDB fallback warning |
 | 2026-10-23 | Agent | Replaced the setup stub README with a portfolio-oriented GitHub README and screenshot capture instructions |
+| 2026-11-11 | Codex | Completed the README preview section with seven application screenshots, removed student placeholders, and documented MongoDB fallback behavior |
 
 ---
 
