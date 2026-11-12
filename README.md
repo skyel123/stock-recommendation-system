@@ -14,6 +14,13 @@ A public deployment URL is not configured in this repository.
 
 To run the application locally, see [Installation and Local Setup](#installation-and-local-setup).
 
+## Project Resources
+
+- [Presentation](https://docs.google.com/presentation/d/1s-hxEoFENzI2U1Jl-bV3zms3-uwI6Q8IVskr8UbA-sE/edit?usp=sharing)
+- [White Paper](https://docs.google.com/document/d/1O3byQWQx3ijMH3Opz8367YUB5np8Tam9qB12hRnO8Ro/edit?usp=sharing)
+- [GitHub Repository](https://github.com/skyel123/stock-recommendation-system)
+- [Demo Video](https://drive.google.com/file/d/16s2K8lbDvNV1zsluoXKIvTkkth82FQUE/view?usp=sharing)
+
 
 ---
 
