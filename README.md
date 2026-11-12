@@ -241,7 +241,7 @@ A chronological split would be the honest way to score this kind of time-series 
 
 ## Engineering Challenges and Lessons Learned
 
-The items below are taken from the repository (error handling, tests, and module boundaries). Personal anecdotes should be added by the author where marked.
+The examples below describe implementation decisions and lessons from building the application.
 
 ### Unreliable market downloads
 
@@ -413,9 +413,7 @@ These are **not** implemented:
 
 ## What I Learned
 
-This project provided hands-on practice with the following Computer Science concepts:
-
-The project demonstrates:
+Building this dashboard gave me hands-on practice with several Computer Science concepts:
 
 - **Modular design.** Controllers, services, repositories, metrics, analysis, prediction, and UI are separate modules.
 - **Data structures.** Typed dataclasses for `User`, `Holding`, and `Portfolio`; pandas frames keyed by date and ticker; session dictionaries for caches.
@@ -427,9 +425,7 @@ The project demonstrates:
 - **Web state.** Streamlit reruns, hidden pages, and cache invalidation when holdings or tickers change.
 - **Testing.** pytest for calculations and use cases that do not require a browser.
 
-Example of a specific statement you can keep or edit:
-
-> I learned how to turn a close-price series into lagged return and volatility features, label the next day’s direction, and report Random Forest feature importance—while still treating the output as a historical estimate rather than a forecast I would trade on.
+I learned how to turn historical closing prices into return and volatility features, use those features in a Random Forest direction estimate, and explain the result without presenting it as a reliable forecast. I also learned how to organize a Streamlit application so its data, calculations, persistence, and interface work together while handling reruns and external service failures.
 
 ---
 
@@ -447,11 +443,9 @@ Example of a specific statement you can keep or edit:
 
 ## Author and Acknowledgments
 
-**Author:** [Your name]  
-**GitHub:** [skyel123](https://github.com/skyel123)  
-**Repository:** [stock-recommendation-system](https://github.com/skyel123/stock-recommendation-system)  
-**Portfolio / contact:** [add if you want them public]
-
-No additional collaborators, awards, or institutional affiliations are recorded in this repository.
+- **Author:** Srikaran Yelimati
+- **GitHub:** [skyel123](https://github.com/skyel123)
+- **Repository:** [stock-recommendation-system](https://github.com/skyel123/stock-recommendation-system)
+- **Contact:** [skyelimati@gmail.com](mailto:skyelimati@gmail.com)
 
 Libraries and services used: [Streamlit](https://streamlit.io/), [pandas](https://pandas.pydata.org/), [NumPy](https://numpy.org/), [Plotly](https://plotly.com/), [yfinance](https://github.com/ranaroussi/yfinance), [scikit-learn](https://scikit-learn.org/), [pymongo](https://www.mongodb.com/docs/drivers/pymongo/), [MongoDB Atlas](https://www.mongodb.com/atlas), [Groq](https://groq.com/), and [pytest](https://pytest.org/). Market data belongs to its providers and is used here for education.

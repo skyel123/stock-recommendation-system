@@ -327,6 +327,7 @@ Portfolio assistant conversations are keyed by user and portfolio, loaded from `
 | 2026-10-23 | Agent | Pinged Atlas on repository init, cached persistence for the Streamlit session, and surfaced authentication failures in the MongoDB fallback warning |
 | 2026-10-23 | Agent | Replaced the setup stub README with a portfolio-oriented GitHub README and screenshot capture instructions |
 | 2026-11-11 | Codex | Completed the README preview section with seven application screenshots, removed student placeholders, and documented MongoDB fallback behavior |
+| 2026-11-11 | Codex | Replaced remaining README editing prompts with finished project reflections and added the author's name and contact email |
 
 ---
 
